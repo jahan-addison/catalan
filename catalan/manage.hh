@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cstddef>                 // for size_t
 #include <cstdint>                 // for int64_t
 #include <mutex>                   // for mutex, scoped_lock
 #include <optional>                // for optional
@@ -15,7 +16,9 @@
 #include <stdexcept>               // for runtime_error
 #include <string>                  // for basic_string, string, to_string
 #include <system_error>            // for system_error
+#include <tuple>                   // for apply
 #include <utility>                 // for forward
+#include <vector>                  // for vector
 
 /****************************************************************************
  * Manage
@@ -62,6 +65,61 @@ struct Post
 };
 
 /**
+ * @brief A listing row, a Post without body or unlisted
+ *
+ * unlisted is always false in a listing, and leaving out body keeps a page
+ * small no matter how long its posts are.
+ */
+struct Post_Summary
+{
+    std::string id{};
+    std::int64_t created_at = 0;
+    std::optional<std::string> parent_id{};
+    std::optional<std::string> title{};
+    std::optional<std::string> author{};
+};
+
+/**
+ * @brief A position in the listing, the last row of the previous page
+ *
+ * id breaks ties between posts created in the same millisecond, so every
+ * position is unique. api.hh encodes it as the opaque next_cursor string.
+ */
+struct Cursor
+{
+    std::int64_t created_at = 0;
+    std::string id{};
+};
+
+enum class Order
+{
+    desc,
+    asc
+};
+
+/**
+ * @brief One page of the listing, next is nullopt on the last page
+ */
+struct Page
+{
+    std::vector<Post_Summary> posts{};
+    std::optional<Cursor> next{};
+};
+
+/**
+ * @brief An Idempotency-Key and the post it created
+ *
+ * created_at is when the key was first used, keys older than the TTL in
+ * api.hh are removed on the next keyed insert.
+ */
+struct Idempotency_Key
+{
+    std::string key{};
+    std::string post_id{};
+    std::int64_t created_at = 0;
+};
+
+/**
  * @brief Construct the storage and schema for the posts table
  *
  * Building the storage doesn't open or create the database file, that
@@ -84,6 +142,7 @@ inline auto initialize_storage(std::string const& db_path)
     return make_storage(db_path,
         make_index(
             "posts_listing", &Post::unlisted, &Post::created_at, &Post::id),
+        make_index("idempotency_keys_created_at", &Idempotency_Key::created_at),
         make_table("posts",
             make_column("id", &Post::id, primary_key()),
             make_column("created_at", &Post::created_at),
@@ -92,7 +151,12 @@ inline auto initialize_storage(std::string const& db_path)
             make_column("title", &Post::title),
             make_column("author", &Post::author),
             make_column("body", &Post::body),
-            foreign_key(&Post::parent_id).references(&Post::id)));
+            foreign_key(&Post::parent_id).references(&Post::id)),
+        make_table("idempotency_keys",
+            make_column("key", &Idempotency_Key::key, primary_key()),
+            make_column("post_id", &Idempotency_Key::post_id),
+            make_column("created_at", &Idempotency_Key::created_at),
+            foreign_key(&Idempotency_Key::post_id).references(&Post::id)));
 }
 
 using Storage = decltype(initialize_storage(""));
@@ -103,7 +167,32 @@ using Storage = decltype(initialize_storage(""));
  * Bump it whenever the schema above changes, and add a migration step to
  * migrate().
  */
-inline constexpr int k_schema_version = 1;
+inline constexpr int k_schema_version = 2;
+
+/**
+ * @brief Apply a migration step that only adds tables or indexes
+ *
+ * sync_schema() is safe on an existing database only when it would create
+ * and nothing else, so the simulation is checked first. The schema change
+ * and the new user_version commit together, or not at all.
+ */
+inline void migrate_additive(Storage& storage, int to_version)
+{
+    using namespace sqlite_orm;
+    for (auto const& [name, result] : storage.sync_schema_simulate()) {
+        if (result != sync_schema_result::already_in_sync and
+            result != sync_schema_result::new_table_created) {
+            throw std::runtime_error(
+                "migration to schema version " + std::to_string(to_version) +
+                " would change '" + name + "', it must only add");
+        }
+    }
+
+    auto guard = storage.transaction_guard();
+    storage.sync_schema();
+    storage.pragma.user_version(to_version);
+    guard.commit();
+}
 
 /**
  * @brief Migrate the database to k_schema_version, or throw
@@ -118,6 +207,10 @@ inline constexpr int k_schema_version = 1;
  *    < k_schema_version   run each migration step in order
  *    == k_schema_version  verify the schema matches, change nothing
  *    > k_schema_version   database is from a newer build, throw
+ *
+ *  Steps:
+ *
+ *    1 -> 2  add idempotency_keys
  */
 inline void migrate(Storage& storage)
 {
@@ -143,20 +236,14 @@ inline void migrate(Storage& storage)
         return;
     }
 
-    // Migration steps go here, oldest first. For example, when
-    // k_schema_version becomes 2:
-    //
-    //   if (version < 2) {
-    //       storage.transaction([&] {
-    //           // ALTER TABLE, backfill, CREATE INDEX, ...
-    //           storage.pragma.user_version(2);
-    //           return true;
-    //       });
-    //   }
+    // migration steps, oldest first, each one sets user_version
+    if (version < 2)
+        migrate_additive(storage, 2);
 
-    if (version < k_schema_version) {
+    if (auto const migrated = storage.pragma.user_version();
+        migrated != k_schema_version) {
         throw std::runtime_error(
-            "no migration from schema version " + std::to_string(version));
+            "no migration from schema version " + std::to_string(migrated));
     }
 
     // catches a struct or column change made without bumping the version
@@ -233,6 +320,194 @@ class Database
     Storage storage_;
     std::mutex mutex_{};
 };
+
+/****************************************************************************
+ * Queries
+ *
+ * One query each, called inside Database::with_storage. Inputs are already
+ * validated by api.hh, the database constraints are a backstop. Failures
+ * throw std::system_error for the handler to map to a response.
+ *
+ * See the Storage API section of decisions.md.
+ ****************************************************************************/
+
+/**
+ * @brief Insert a new post
+ *
+ * One INSERT with an explicit column list. A plain insert(post) won't
+ * compile for a text primary key, and replace() would silently overwrite a
+ * duplicate id.
+ *
+ *  Throws std::system_error:
+ *
+ *    is_duplicate_id(e)    // the id is taken, the handler retries
+ *    is_unknown_parent(e)  // parent_id doesn't exist, 422
+ */
+inline void insert_post(Storage& storage, Post const& post)
+{
+    using namespace sqlite_orm;
+    storage.insert(post,
+        columns(&Post::id,
+            &Post::created_at,
+            &Post::unlisted,
+            &Post::parent_id,
+            &Post::title,
+            &Post::author,
+            &Post::body));
+}
+
+/**
+ * @brief Get a post by id, including unlisted posts
+ *
+ * Unlisted only hides a post from the listing, not from its link.
+ */
+inline std::optional<Post> get_post(Storage& storage, std::string const& id)
+{
+    return storage.get_optional<Post>(id);
+}
+
+/**
+ * @brief Get one page of listed posts, after a cursor
+ *
+ * Fetch limit + 1 rows, if the extra row comes back there's another page.
+ * Drop it, and next is the last kept row's (created_at, id).
+ *
+ *  Example - order desc, after (t, i):
+ *
+ *    WHERE unlisted = 0
+ *      AND (created_at < t OR (created_at = t AND id < i))
+ *    ORDER BY created_at DESC, id DESC
+ *    LIMIT limit + 1
+ *
+ * For order asc, flip both < to > and both DESC to ASC. With no cursor, drop
+ * the second condition.
+ */
+inline Page list_posts(Storage& storage,
+    std::size_t limit,
+    Order order,
+    std::optional<Cursor> const& after)
+{
+    using namespace sqlite_orm;
+
+    auto const fetch = static_cast<int>(limit) + 1;
+    auto const listed = c(&Post::unlisted) == false;
+
+    auto const select_page = [&](auto condition, auto first, auto second) {
+        return storage.select(columns(&Post::id,
+                                  &Post::created_at,
+                                  &Post::parent_id,
+                                  &Post::title,
+                                  &Post::author),
+            where(condition),
+            multi_order_by(first, second),
+            sqlite_orm::limit(fetch));
+    };
+
+    auto rows = [&] {
+        if (order == Order::desc) {
+            auto const first = order_by(&Post::created_at).desc();
+            auto const second = order_by(&Post::id).desc();
+            if (not after)
+                return select_page(listed, first, second);
+            return select_page(
+                listed and (c(&Post::created_at) < after->created_at or
+                               (c(&Post::created_at) == after->created_at and
+                                   c(&Post::id) < after->id)),
+                first,
+                second);
+        }
+        auto const first = order_by(&Post::created_at).asc();
+        auto const second = order_by(&Post::id).asc();
+        if (not after)
+            return select_page(listed, first, second);
+        return select_page(
+            listed and (c(&Post::created_at) > after->created_at or
+                           (c(&Post::created_at) == after->created_at and
+                               c(&Post::id) > after->id)),
+            first,
+            second);
+    }();
+
+    Page page{};
+    page.posts.reserve(rows.size());
+    for (auto& row : rows) {
+        std::apply(
+            [&](auto& id,
+                auto& created_at,
+                auto& parent_id,
+                auto& title,
+                auto& author) {
+                page.posts.push_back(Post_Summary{ std::move(id),
+                    created_at,
+                    std::move(parent_id),
+                    std::move(title),
+                    std::move(author) });
+            },
+            row);
+    }
+
+    // the extra row only signals a next page, it belongs to the next one
+    if (page.posts.size() > limit) {
+        page.posts.resize(limit);
+        auto const& last = page.posts.back();
+        page.next = Cursor{ last.created_at, last.id };
+    }
+
+    return page;
+}
+
+/**
+ * @brief Insert a post under an Idempotency-Key, or get the key's post
+ *
+ * Returns nullopt when the post was inserted, or the post the key already
+ * created. The handler decides whether that's a replay or a mismatch.
+ *
+ * Expired keys are removed, the key is looked up, and the post and key are
+ * inserted in one transaction, under Database's mutex. Two requests with the
+ * same key can't interleave, so there is no in-progress state to report.
+ *
+ *  Example:
+ *
+ *    insert_post_once(storage, post, key, cutoff);  // nullopt, inserted
+ *    insert_post_once(storage, post, key, cutoff);  // Post, already used
+ *
+ *  Throws std::system_error, as insert_post does.
+ */
+inline std::optional<Post> insert_post_once(Storage& storage,
+    Post const& post,
+    std::string const& key,
+    std::int64_t expired_before)
+{
+    using namespace sqlite_orm;
+    auto guard = storage.transaction_guard();
+
+    storage.remove_all<Idempotency_Key>(
+        where(c(&Idempotency_Key::created_at) < expired_before));
+
+    if (auto const used = storage.get_optional<Idempotency_Key>(key)) {
+        auto existing = storage.get<Post>(used->post_id);
+        guard.commit();
+        return existing;
+    }
+
+    insert_post(storage, post);
+    storage.insert(Idempotency_Key{ key, post.id, post.created_at },
+        columns(&Idempotency_Key::key,
+            &Idempotency_Key::post_id,
+            &Idempotency_Key::created_at));
+    guard.commit();
+    return std::nullopt;
+}
+
+/**
+ * @brief Check the database is reachable, or throw
+ *
+ * Reads PRAGMA user_version, which is cheap and touches the database file.
+ */
+inline void check_health(Storage& storage)
+{
+    static_cast<void>(storage.pragma.user_version());
+}
 
 /**
  * @brief Check which constraint an insert broke

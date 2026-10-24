@@ -104,6 +104,34 @@ A new post:
 
 The server sets `id` and `created_at`.
 
+### Idempotency-Key
+
+`POST /v1/posts` isn't idempotent: sending it twice creates two posts. If a connection drops after the server creates a post but before the `201` arrives, a client can't tell whether to retry. An `Idempotency-Key` makes the retry safe:
+
+```bash
+KEY="\"$(uuidgen)\""    # one key per post, reused on every retry
+
+curl -i http://localhost:18080/v1/posts \
+  -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $KEY" \
+  -d '{ "body": "$$e^{i\\pi} + 1 = 0$$" }'
+
+# HTTP/1.1 201 Created
+# Location: /v1/posts/7HcPq2mVa0Rn
+```
+
+Running it again with the same key returns the same post instead of a new one:
+
+```
+HTTP/1.1 201 Created
+Location: /v1/posts/7HcPq2mVa0Rn
+Idempotent-Replayed: true
+```
+
+* The same key with a different post is a `422`, with type `/problems/idempotency-key-reused`
+* Keys are kept for 24 hours, and must be 16 to 255 visible ASCII characters
+* **Note**: There is no auth, so keys aren't scoped to a client - use a random UUID, never a guessable value
+
 ### Status codes
 
 Errors are returned as [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`), so every error has the same shape:

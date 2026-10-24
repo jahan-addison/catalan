@@ -15,6 +15,9 @@ info:
     - **Unlisted** An unlisted post is left out of `GET /v1/posts`, but anyone with its link
       can read it. Post ids are random, so links can't be guessed.
     - **Errors** use RFC 9457 Problem Details (`application/problem+json`).
+    - **Safe retries.** `POST /v1/posts` accepts an `Idempotency-Key` header, so
+      a client can retry a create after a network failure without making a
+      duplicate post.
   license:
     name: Apache 2.0
     identifier: Apache-2.0
@@ -46,7 +49,14 @@ paths:
       description: |
         Creates a new post. To "edit" an existing post, set `parent_id` to its
         id. The original post is left unchanged.
+
+        With an `Idempotency-Key`, a retry of the same post within 24 hours
+        replays the original `201`, with the same post and an
+        `Idempotent-Replayed: true` header, instead of creating a duplicate.
+        The same key with a different post is a `422`.
       tags: [Posts]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -69,13 +79,15 @@ paths:
                   parent_id: 4fQx9ZtLb2Wk
       responses:
         '201':
-          description: Post created
+          description: Post created, or replayed for a repeated Idempotency-Key
           headers:
             Location:
               description: URL of the new post
               schema:
                 type: string
                 example: /v1/posts/7HcPq2mVa0Rn
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
           content:
             application/json:
               schema:
@@ -244,6 +256,21 @@ components:
       schema:
         type: string
 
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: |
+        A unique key for this create, usually a random UUID, sent unchanged on
+        every retry. A quoted string per the IETF draft, an unquoted value is
+        accepted too. 16 to 255 visible ASCII characters. Keys aren't scoped
+        to a client, since there is no auth, so they must be hard to guess.
+        Kept for 24 hours.
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 257
+      example: '"8e03978e-40d5-43e8-bc93-6894a57f9324"'
+
   headers:
     ETag:
       description: Version tag for the post. Never changes, since posts are immutable.
@@ -256,6 +283,14 @@ components:
       schema:
         type: string
         example: public, max-age=31536000, immutable
+
+    IdempotentReplayed:
+      description: |
+        Present and `true` when this `201` is a replay of an earlier request
+        with the same `Idempotency-Key`. Absent on the original.
+      schema:
+        type: string
+        const: 'true'
 
     RetryAfter:
       description: Seconds to wait before retrying
@@ -394,8 +429,8 @@ components:
 
     BadRequest:
       description: |
-        The request couldn't be parsed, e.g. malformed JSON or an invalid query
-        parameter such as `limit=abc`.
+        The request couldn't be parsed, e.g. malformed JSON, an invalid query
+        parameter such as `limit=abc`, or a malformed `Idempotency-Key`.
       content:
         application/problem+json:
           schema:
@@ -435,7 +470,8 @@ components:
       description: |
         The JSON is well-formed but breaks the rules, e.g. an empty `body`, a
         field that's too long, an unknown field, or a `parent_id` that doesn't
-        exist.
+        exist. Also returned when an `Idempotency-Key` was already used for a
+        different post, with type `/problems/idempotency-key-reused`.
       content:
         application/problem+json:
           schema:

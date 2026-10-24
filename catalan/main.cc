@@ -5,6 +5,7 @@
  * See the LICENSE file in the project root for the full text.
  ****************************************************************************/
 
+#include <catalan/api.hh>    // for create_post, list_posts, get_post, ...
 #include <catalan/manage.hh> // for Database
 #include <crow.h>            // for SimpleApp, CROW_ROUTE, CROW_LOG_CRITICAL
 #include <cstdlib>           // for getenv
@@ -34,7 +35,32 @@ int main()
     try {
         catalan::orm::Database db{ env_or("CATALAN_DB", "catalan.db") };
 
-        CROW_ROUTE(app, "/health")([] { return "ok"; });
+        // routes only forward to api.hh, which the tests can reach
+
+        CROW_ROUTE(app, "/v1/posts")
+            .methods("POST"_method)([&db](crow::request const& req) {
+                return catalan::api::create_post(db, req);
+            });
+
+        CROW_ROUTE(app, "/v1/posts")
+            .methods("GET"_method)([&db](crow::request const& req) {
+                return catalan::api::list_posts(db, req);
+            });
+
+        CROW_ROUTE(app, "/v1/posts/<string>")
+            .methods("GET"_method)(
+                [&db](crow::request const& req, std::string const& id) {
+                    return catalan::api::get_post(db, req, id);
+                });
+
+        CROW_ROUTE(app, "/v1/posts/<string>/raw")
+            .methods("GET"_method)(
+                [&db](crow::request const& req, std::string const& id) {
+                    return catalan::api::get_post_raw(db, req, id);
+                });
+
+        CROW_ROUTE(app, "/health")(
+            [&db] { return catalan::api::get_health(db); });
 
         app.bindaddr("0.0.0.0")
             .port(std::stoi(env_or("CATALAN_PORT", "18080")))

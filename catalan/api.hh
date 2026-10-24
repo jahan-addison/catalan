@@ -7,17 +7,24 @@
 
 #pragma once
 
-#include <algorithm>   // for all_of, generate
-#include <cstddef>     // for size_t
-#include <random>      // for random_device, uniform_int_distribution
-#include <string>      // for basic_string, string
-#include <string_view> // for basic_string_view, string_view
+#include <algorithm>         // for all_of, generate
+#include <catalan/manage.hh> // for Database, Post, Post_Summary, Cursor
+#include <crow.h>            // for request, response, json
+#include <cstddef>           // for size_t
+#include <cstdint>           // for int64_t
+#include <optional>          // for optional
+#include <random>            // for random_device, uniform_int_distribution
+#include <string>            // for basic_string, string
+#include <string_view>       // for basic_string_view, string_view
+#include <vector>            // for vector
 
 /****************************************************************************
  * API
  *
  * Request and response logic for the HTTP routes registered in main.cc.
- * Post ids, validation, and the JSON shapes in openapi.yaml.
+ * One handler per endpoint, named after its operationId in openapi.yaml,
+ * plus the helpers they share. Handlers are plain functions, so the tests
+ * call them with a crow::request and no running server.
  *
  *  Example:
  *
@@ -107,5 +114,203 @@ constexpr bool is_post_id(std::string_view id)
                return k_id_alphabet.find(c) != std::string_view::npos;
            });
 }
+
+/****************************************************************************
+ * Limits
+ *
+ * The constraints from openapi.yaml, checked by validate_new_post and the
+ * list_posts handler.
+ ****************************************************************************/
+
+inline constexpr std::size_t k_body_max_length = 65536;
+inline constexpr std::size_t k_title_max_length = 200;
+inline constexpr std::size_t k_author_max_length = 64;
+
+inline constexpr std::size_t k_list_limit_default = 20;
+inline constexpr std::size_t k_list_limit_max = 100;
+
+// attempts at a fresh id before create_post gives up with a 500
+inline constexpr int k_insert_attempts = 3;
+
+// an Idempotency-Key is 16 to 255 visible ASCII characters, kept for 24 hours
+inline constexpr std::size_t k_idempotency_key_min_length = 16;
+inline constexpr std::size_t k_idempotency_key_max_length = 255;
+inline constexpr std::int64_t k_idempotency_ttl_ms = 24LL * 60 * 60 * 1000;
+
+/****************************************************************************
+ * Helpers
+ ****************************************************************************/
+
+/**
+ * @brief A field that failed validation, one entry in a 422's errors
+ *
+ *  Example:
+ *
+ *    { "field": "body", "message": "must not be empty" }
+ */
+struct Field_Error
+{
+    std::string field{};
+    std::string message{};
+};
+
+/**
+ * @brief Milliseconds since the Unix epoch, for Post::created_at
+ *
+ * std::chrono::system_clock is wall-clock time, which is what a creation
+ * date wants. steady_clock is only for measuring durations.
+ */
+std::int64_t now_ms();
+
+/**
+ * @brief Format a created_at for JSON
+ *
+ *  Example:
+ *
+ *    to_iso8601(1761275700123); // "2025-10-24T03:15:00.123Z"
+ */
+std::string to_iso8601(std::int64_t milliseconds);
+
+/**
+ * @brief Encode a listing position as the opaque next_cursor string
+ *
+ *  Example:
+ *
+ *    { created_at: 1761275700123, id: "7HcPq2mVa0Rn" }
+ *
+ *  Becomes:
+ *
+ *    base64url("1761275700123.7HcPq2mVa0Rn"), without = padding
+ */
+std::string encode_cursor(orm::Cursor const& cursor);
+
+/**
+ * @brief Decode a cursor query parameter, nullopt if it's malformed (400)
+ *
+ * It came from the client, so check everything: the base64url, the integer,
+ * and the id with is_post_id.
+ */
+std::optional<orm::Cursor> decode_cursor(std::string_view cursor);
+
+/**
+ * @brief Parse an Idempotency-Key header, nullopt if it's malformed (400)
+ *
+ * The IETF draft defines the value as a quoted string, the quotes are
+ * removed. An unquoted value is accepted too, which is how most clients
+ * send it. The key must be hard to guess: keys aren't scoped to a client,
+ * since there is no auth, so a client sends a random UUID.
+ *
+ *  Examples:
+ *
+ *    parse_idempotency_key("\"8e03978e-40d5-43e8-bc93-6894a57f9324\"");
+ *    // "8e03978e-40d5-43e8-bc93-6894a57f9324"
+ *
+ *    parse_idempotency_key("8e03978e-40d5-43e8-bc93-6894a57f9324");
+ *    // "8e03978e-40d5-43e8-bc93-6894a57f9324"
+ *
+ *    parse_idempotency_key("\"abc\"");      // nullopt, too short
+ *    parse_idempotency_key("two words");   // nullopt, not visible ASCII
+ */
+std::optional<std::string> parse_idempotency_key(std::string_view header);
+
+/**
+ * @brief Validate a POST /v1/posts body against NewPost in openapi.yaml
+ *
+ * Collects every failure, not just the first. An empty result means the body
+ * is valid.
+ *
+ *  * body is required, 1 to k_body_max_length characters
+ *
+ *  * title and author are optional, up to their k_ limits
+ *
+ *  * unlisted is an optional boolean
+ *
+ *  * parent_id is optional, and must pass is_post_id
+ *
+ *  * no other fields
+ */
+std::vector<Field_Error> validate_new_post(crow::json::rvalue const& body);
+
+/**
+ * @brief Build an RFC 9457 Problem Details response
+ *
+ * Every error goes through here, so they all have the same shape and the
+ * application/problem+json content type. The type URI comes from the
+ * status unless one is given.
+ *
+ *  Example:
+ *
+ *    problem(404, "Post not found");
+ *
+ *  Becomes:
+ *
+ *    404 Not Found
+ *    Content-Type: application/problem+json
+ *
+ *    { "type": "/problems/not-found", "title": "Post not found",
+ *      "status": 404 }
+ */
+crow::response problem(int status,
+    std::string_view title,
+    std::string_view detail = "",
+    std::vector<Field_Error> const& errors = {},
+    std::string_view type = "");
+
+/**
+ * @brief Post and Post_Summary as the JSON shapes in openapi.yaml
+ *
+ * created_at goes through to_iso8601, and empty optionals become null.
+ */
+crow::json::wvalue to_json(orm::Post const& post);
+crow::json::wvalue to_json(orm::Post_Summary const& post);
+
+/****************************************************************************
+ * Handlers
+ *
+ * One per endpoint, registered in main.cc. Each follows the numbered steps
+ * in the Routes section of decisions.md.
+ ****************************************************************************/
+
+/**
+ * @brief POST /v1/posts, createPost
+ *
+ * 201 with a Location header, or 400, 415, 422, 500. With an
+ * Idempotency-Key, a retry of the same post replays the original 201 with
+ * Idempotent-Replayed: true, and a different post under the same key is a
+ * 422.
+ */
+crow::response create_post(orm::Database& db, crow::request const& req);
+
+/**
+ * @brief GET /v1/posts, listPosts
+ *
+ * 200 with a page of posts, or 400 for a bad limit, order, or cursor.
+ */
+crow::response list_posts(orm::Database& db, crow::request const& req);
+
+/**
+ * @brief GET /v1/posts/{id}, getPost
+ *
+ * 200 with ETag and Cache-Control, 304 for a matching If-None-Match, or 404.
+ */
+crow::response get_post(orm::Database& db,
+    crow::request const& req,
+    std::string const& id);
+
+/**
+ * @brief GET /v1/posts/{id}/raw, getPostRaw
+ *
+ * Same as get_post, with only the body as text/plain.
+ */
+crow::response get_post_raw(orm::Database& db,
+    crow::request const& req,
+    std::string const& id);
+
+/**
+ * @brief GET /health, getHealth
+ *
+ * 200 "ok", or 503 Problem Details if the database is unreachable.
+ */
+crow::response get_health(orm::Database& db);
 
 } // namespace catalan::api

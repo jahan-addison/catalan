@@ -1,3 +1,10 @@
+/*****************************************************************************
+ * Copyright (c) 2026 Jahan Addison
+ * License: Apache 2.0
+ *
+ * See the LICENSE file in the project root for the full text.
+ ****************************************************************************/
+
 #include <doctest/doctest.h> // for ResultBuilder, CHECK_EQ, TEST_CASE
 
 #include <sqlite_orm/sqlite_orm.h> // for make_storage, make_table, make_column
@@ -7,8 +14,8 @@ namespace {
 
 struct Row
 {
-    int id;
-    std::string name;
+    int id = 0;
+    std::string name{};
 };
 
 } // namespace

@@ -1,9 +1,35 @@
-<h1 align="center">catalan</h1>
-
-
 <h5 align="center">
-  A pastebin for math and LaTeX ∑
+  A stateless markdown + latex pastebin for math 📗
 </h5>
+
+<table align="center">
+<tr>
+<td>
+
+```text
+                                          ⡀
+                  catalan  ⠈
+                         ⠖⠃   ⡁     ⠐⠆      ⠁              ⡠⢔⡤⠊⠁
+                  ⠁   ⠁  ⠘⠁⢀    ⢈⠓⠂⠠⡄ ⠈              ⢀⣠⣶⠿⠞⠋⠁
+                     ⠒⠁ ⠠⡚⠁⢀⣙⣀⣈⡩⠬⢁ ⢑⠶⠤⡆⠤⡀      ⢀⠴⢲⣋⣽⣷⠟⠃
+                ⠁ ⢠  ⣶⠃⠗⣡⣶⣮⣿⡿⠿⠿⢿⣿⣷⣶⣤⣤⠤⠴⠦⠬⣤⣤⠄⣉⠉⠝⢲⣿⡷⠻⠂
+             ⠈    ⠁⡀⡸⠁⣰⣿⡿⠛⠋⣁⡀⠤⠤⢄⡀⠈⠛⢯⣿⣟⣾⣶⣶⣮⣭⣵⣾⣿⣟⠿⠉⢨⠖⠃
+                ⢠ ⢠⠳⡧⣻⡿⠋⢀⠒⠉      ⠉⠢  ⠙⠛⣻⣿⣿⣿⢿⣿⣿⠟⡱⠖⠊⠁
+                ⠁⢠⣧⠓⣾⣿⠁ ⠃          ⠉⢦⣠⣾⣿⠿⣿⣿⣿⡿⣫⠏⠁
+               ⡀ ⠂⢃⣸⣿⠇⢠⠃         ⢀⣠⣴⣿⠟⢿⠁⠸⡿⣿⣯⡶⠃
+               ⠁⢘⡄⠘⣿⣿ ⠸⡀     ⢀⣀⣴⣾⣿⡿⡟⡋⠐⡇ ⢸⣿⣿⠃ ⠁
+                ⢡⠘⢰⣿⡿⡆ ⣇ ⣀⣠⣤⣶⣿⢷⢟⠻ ⠈   ⡇ ⣼⣿⣿⠂ ⡀
+             ⢀⠔⢀⡴⢯⣾⠟⡏⢀⣠⣿⣿⣿⣟⢟⡋⠅⠘⠉    ⢀ ⠁⢠⣿⣟⠃ ⠁
+             ⢠⠞⣻⣷⡿⢙⣩⣶⡿⠿⠛⠉⠑⢡⡁      ⢀⠔⠁ ⣰⣿⣿⡟
+           ⣡⣾⣥⣾⢫⡦⠾⠛⠙⠉  ⢀⣀ ⠈⠙⠓⠦⠤⠤ ⠘⠁⢀⡤⣾⡿⠏⠁
+        ⠔⣴⣾⣿⣿⢟⢝⠢⠃⢀⣤⢴⣾⣮⣷⣶⢿⣶⡤⣐⡀ ⣠⣤⢶⣪⣿⣿⡿⠟
+      ⡀⣦⣾⡿⡛⠵⠺⢈⡠⠶⠿⠥⠥⡭⠉⠉⢱⡛⠻⠿⣿⣿⣿⣿⣿⠿⠿⠿⠟⠭⠛⠂
+   ⢀⢴⠕⣋⠝⠕⠐ ⠔⠉    ⠁         ⠉⠁⠉⠁⠁⠁⠁⠈ ⠁
+⢀⣠⠁⠈
+```
+</td>
+</tr>
+</table>
 
 
 ## Overview
@@ -66,27 +92,11 @@ Errors are returned as [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc
 }
 ```
 
-The rule of thumb: `2xx` means it worked, `4xx` means the client should change its request, `5xx` means the server failed and the same request may work later.
-
-- `200 OK` - a successful read
-- `201 Created` - a post was created, the `Location` header has its URL
-- `304 Not Modified` - the client's cached copy is current, sent when `If-None-Match` matches the `ETag`
-- `400 Bad Request` - the request can't be parsed, e.g. malformed JSON or `limit=abc`
-- `404 Not Found` - no post has this id, a malformed id is treated the same way
-- `413 Content Too Large` - the request body is over 256 KiB, enforced by the proxy
-- `415 Unsupported Media Type` - the `Content-Type` isn't `application/json`
-- `422 Unprocessable Content` - valid JSON that breaks the rules, e.g. an empty `body` or a `parent_id` that doesn't exist
-- `429 Too Many Requests` - rate limited per client IP by the proxy, `Retry-After` says how many seconds to wait
-- `500 Internal Server Error` - a bug or failure on the server, never the client's fault
-- `503 Service Unavailable` - from `/health` only, the database is unreachable
-
-**Note**: `400` vs `422` is the distinction worth learning first. `400` means "I couldn't read that", `422` means "I read it, and it's not allowed".
-
 ---
 
 ## Requirements
 
-- Docker with BuildKit/buildx - Docker Desktop on macOS, Docker Engine 23+ on Linux
+- Docker Desktop on macOS, Docker Engine 23+ on Linux
 - For native builds: CMake 3.16+, a C++20 compiler, SQLite3 headers, and git
 
 Dependencies are fetched by [CPM](https://github.com/cpm-cmake/CPM.cmake) on the first configure and cached in `~/.cache/CPM`. Set `CPM_SOURCE_CACHE` to change the location.
@@ -132,13 +142,15 @@ sudo apt install build-essential cmake git libsqlite3-dev
 ```
 
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Debug -DUSE_SANITIZER="Address;Undefined" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DUSE_SANITIZER="Address;Undefined"
 cmake --build build -j
 ./build/test_suite
 ./build/catalan
 ```
 
 I personally **do not** recommend developing without at least `Address;Undefined`.
+
+**Note**: The pre-commit `clang-tidy` hook reads `build/compile_commands.json`, so configure a native `build/` even if you develop in the dev container - the container's `build/` is a separate volume.
 
 #### CMake options
 

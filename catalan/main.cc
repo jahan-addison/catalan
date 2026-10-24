@@ -1,3 +1,10 @@
+/*****************************************************************************
+ * Copyright (c) 2026 Jahan Addison
+ * License: Apache 2.0
+ *
+ * See the LICENSE file in the project root for the full text.
+ ****************************************************************************/
+
 #include <crow.h>  // for SimpleApp, CROW_ROUTE
 #include <cstdlib> // for getenv
 #include <string>  // for stoi

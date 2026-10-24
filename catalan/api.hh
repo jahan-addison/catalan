@@ -1,0 +1,85 @@
+/*****************************************************************************
+ * Copyright (c) 2026 Jahan Addison
+ * License: Apache 2.0
+ *
+ * See the LICENSE file in the project root for the full text.
+ ****************************************************************************/
+
+#pragma once
+
+#include <algorithm>   // for std::all_of, std::generate
+#include <cstddef>     // for std::size_t
+#include <random>      // for std::random_device, uniform_int_distribution
+#include <string>      // for std::string
+#include <string_view> // for std::string_view
+
+/****************************************************************************
+ * API
+ *
+ * Request and response logic for the HTTP routes registered in main.cc.
+ *
+ * Nothing here touches the database, see manage.hh.
+ ****************************************************************************/
+
+namespace catalan::api {
+
+/**
+ * @brief Post ids are base62: digits, lowercase, then uppercase. No symbols,
+ *  so an id is always safe in a URL and easy to copy.
+ */
+inline constexpr std::string_view k_id_alphabet =
+    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/**
+ * @brief 62^12 ~= 3.2 x 10^21 possible ids, enough that an unlisted post's
+ *  link can't be guessed.
+ */
+inline constexpr std::size_t k_id_length = 12;
+
+/**
+ * @brief
+ * Generate a random post id, e.g. "7HcPq2mVa0Rn".
+ *
+ * std::random_device reads from the OS or the CPU's hardware generator
+ * (/dev/urandom, getentropy, or RDRAND on Linux, arc4random on macOS),
+ * never a seeded PRNG like rand() or std::mt19937, whose next output can be
+ * predicted from previous ones.
+ *
+ * std::uniform_int_distribution maps each draw onto [0, 61] without bias.
+ * The obvious `byte % 62` is biased: 256 isn't a multiple of 62, so the
+ * first 8 characters of the alphabet would come up slightly more often.
+ *
+ * The device is thread_local since Crow runs routes on multiple threads and
+ * std::random_device isn't guaranteed to be thread-safe.
+ *
+ * A collision is practically impossible, but the insert should still
+ * retry with a new id on a UNIQUE constraint failure.
+ */
+inline std::string make_post_id()
+{
+    thread_local std::random_device device{};
+    std::uniform_int_distribution<std::size_t> pick{ 0,
+        k_id_alphabet.size() - 1 };
+
+    std::string id(k_id_length, '\0');
+    std::generate(
+        id.begin(), id.end(), [&] { return k_id_alphabet[pick(device)]; });
+
+    return id;
+}
+
+/**
+ * @brief Whether `id` could be a post id, i.e. 12 base62 characters.
+ *
+ * Checked before the database lookup. A malformed id gets the same 404 as
+ * an unknown one, see openapi.yaml.
+ */
+constexpr bool is_post_id(std::string_view id)
+{
+    return id.size() == k_id_length and
+           std::all_of(id.begin(), id.end(), [](char c) {
+               return k_id_alphabet.find(c) != std::string_view::npos;
+           });
+}
+
+} // namespace catalan::api

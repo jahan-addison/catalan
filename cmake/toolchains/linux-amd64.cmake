@@ -1,4 +1,5 @@
-# Requires crossbuild-essential-amd64 and libsqlite3-dev:amd64 (multiarch)
+# Cross-compile toolchain for Linux amd64, requires crossbuild-essential-amd64
+# and libsqlite3-dev:amd64 (multiarch).
 
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)

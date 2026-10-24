@@ -5,15 +5,14 @@ info:
   version: 0.1.0
   summary: A pastebin for math and LaTeX
   description: |
-    Catalan is a pastebin for Markdown and LaTeX posts.
+    Catalan is a pastebin for math via Markdown and LaTeX.
 
     - **Stateless, no auth.** There are no accounts, sessions, or cookies. Every
       request stands on its own.
     - **Posts are immutable.** Once created, a post never changes and can't be
       deleted. "Editing" a post creates a new post whose `parent_id` points at
       the original.
-    - **Unlisted, not private.** Without auth nothing can be truly private. An
-      unlisted post is left out of `GET /v1/posts`, but anyone with its link
+    - **Unlisted** An unlisted post is left out of `GET /v1/posts`, but anyone with its link
       can read it. Post ids are random, so links can't be guessed.
     - **Errors** use RFC 9457 Problem Details (`application/problem+json`).
   license:
@@ -282,7 +281,7 @@ components:
         author:
           type: string
           maxLength: 64
-          description: Optional display name. Not verified.
+          description: Optional display name.
         body:
           type: string
           minLength: 1

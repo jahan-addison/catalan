@@ -1,3 +1,11 @@
+# ##############################################################################
+# Copyright (c) 2026 Jahan Addison
+#
+# License: Apache 2.0
+#
+# See the LICENSE file in the project root for the full text.
+# ##############################################################################
+
 cmake_minimum_required(VERSION 3.16...3.31)
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.16)
@@ -32,19 +40,19 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 include(cmake/CPM.cmake)
 
 # ##############################################################################
-# DEPENDENCIES
+# Dependencies
 # ##############################################################################
 
 cpmaddpackage("gh:StableCoder/cmake-scripts#24.04.1")
 
 include(${cmake-scripts_SOURCE_DIR}/tools.cmake)
 
-# sqlite_orm::sqlite_orm links SQLite3 transitively
+# sqlite_orm::sqlite_orm links SQLite3 transitively.
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
 
-# asio has no CMakeLists, so define asio::asio before Crow's Findasio.cmake
-# creates a directory-local target this project can't see
+# asio has no CMakeLists, so asio::asio is defined here before Crow's
+# Findasio.cmake creates a directory-local target this project can't see.
 cpmaddpackage(
   NAME
   asio
@@ -80,12 +88,12 @@ cpmaddpackage(
 cpmaddpackage("gh:fnc12/sqlite_orm#v1.9.1")
 
 # ##############################################################################
-# BUILD OPTIONS
+# Warnings
 # ##############################################################################
 
-# Applied per-target rather than via CMAKE_CXX_FLAGS so -Werror never fires on
-# dependencies. No -march=native, release binaries must run on the deploy
-# target's CPU, not the build machine's
+# Applied per-target rather than via CMAKE_CXX_FLAGS, so -Werror never fires on
+# dependencies. No -march=native, since release binaries run on the deploy
+# target's CPU, not the build machine's.
 set(CATALAN_WARNINGS -Wall -Wextra -Wpedantic -Werror)
 
 # ##############################################################################

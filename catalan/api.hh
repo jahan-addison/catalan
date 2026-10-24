@@ -7,53 +7,71 @@
 
 #pragma once
 
-#include <algorithm>   // for std::all_of, std::generate
-#include <cstddef>     // for std::size_t
-#include <random>      // for std::random_device, uniform_int_distribution
-#include <string>      // for std::string
-#include <string_view> // for std::string_view
+#include <algorithm>   // for all_of, generate
+#include <cstddef>     // for size_t
+#include <random>      // for random_device, uniform_int_distribution
+#include <string>      // for basic_string, string
+#include <string_view> // for basic_string_view, string_view
 
 /****************************************************************************
  * API
  *
  * Request and response logic for the HTTP routes registered in main.cc.
+ * Post ids, validation, and the JSON shapes in openapi.yaml.
  *
- * Nothing here touches the database, see manage.hh.
+ *  Example:
+ *
+ *  POST /v1/posts
+ *  { "body": "$$e^{i\\pi} + 1 = 0$$" }
+ *
+ *  Becomes:
+ *
+ *  201 Created
+ *  Location: /v1/posts/7HcPq2mVa0Rn
+ *
  ****************************************************************************/
 
 namespace catalan::api {
 
 /**
- * @brief Post ids are base62: digits, lowercase, then uppercase. No symbols,
- *  so an id is always safe in a URL and easy to copy.
+ * @brief Base62 alphabet for post ids
+ *
+ * Digits, lowercase, then uppercase. No symbols, so an id is always safe in
+ * a URL and easy to copy.
  */
 inline constexpr std::string_view k_id_alphabet =
     "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /**
- * @brief 62^12 ~= 3.2 x 10^21 possible ids, enough that an unlisted post's
- *  link can't be guessed.
+ * @brief Post id length
+ *
+ * 62^12 is about 3.2 x 10^21 possible ids, so the link to an unlisted post
+ * can't be guessed.
  */
 inline constexpr std::size_t k_id_length = 12;
 
 /**
- * @brief
- * Generate a random post id, e.g. "7HcPq2mVa0Rn".
+ * @brief Generate a random post id
+ *
+ *  Example:
+ *
+ *    make_post_id(); // "7HcPq2mVa0Rn"
+ *    make_post_id(); // "Kx04bQmZr9Ta"
  *
  * std::random_device reads from the OS or the CPU's hardware generator
- * (/dev/urandom, getentropy, or RDRAND on Linux, arc4random on macOS),
- * never a seeded PRNG like rand() or std::mt19937, whose next output can be
+ * (/dev/urandom, getentropy, or RDRAND on Linux, arc4random on macOS). Never
+ * a seeded PRNG like rand() or std::mt19937, whose next output can be
  * predicted from previous ones.
  *
  * std::uniform_int_distribution maps each draw onto [0, 61] without bias.
- * The obvious `byte % 62` is biased: 256 isn't a multiple of 62, so the
- * first 8 characters of the alphabet would come up slightly more often.
+ * The obvious `byte % 62` is biased, since 256 isn't a multiple of 62, so
+ * the first 8 characters of the alphabet would come up slightly more often.
  *
- * The device is thread_local since Crow runs routes on multiple threads and
+ * The device is thread_local since Crow runs routes on multiple threads, and
  * std::random_device isn't guaranteed to be thread-safe.
  *
- * A collision is practically impossible, but the insert should still
- * retry with a new id on a UNIQUE constraint failure.
+ * A collision is practically impossible, but the insert still retries with
+ * a new id on a primary key failure, see orm::is_duplicate_id.
  */
 inline std::string make_post_id()
 {
@@ -69,10 +87,18 @@ inline std::string make_post_id()
 }
 
 /**
- * @brief Whether `id` could be a post id, i.e. 12 base62 characters.
+ * @brief Check that an id could be a post id
  *
  * Checked before the database lookup. A malformed id gets the same 404 as
  * an unknown one, see openapi.yaml.
+ *
+ *  Examples:
+ *
+ *    is_post_id("7HcPq2mVa0Rn");  // true
+ *    is_post_id("000000000000");  // true
+ *    is_post_id("7HcPq2mVa0R");   // false, 11 characters
+ *    is_post_id("7HcPq2mVa0R-");  // false, not base62
+ *    is_post_id("../../etc/pa");  // false
  */
 constexpr bool is_post_id(std::string_view id)
 {

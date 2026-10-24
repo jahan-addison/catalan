@@ -31,22 +31,51 @@
 </tr>
 </table>
 
+> Licensed under the Apache License v2, see details [here](#license).
+
+* API reference: [here](openapi.yaml)
+* Original project: [mathb](https://github.com/susam/mathb)
+
 
 ## Overview
 
-Catalan is a pastebin for mathematics and LaTeX. Write a post with Markdown and/or LaTeX, get back a link to share. It's my own version of [mathb](https://github.com/susam/mathb), the now discontinued math pastebin in PHP.
+Catalan is a pastebin for math via Markdown and LaTeX. It's my own version of [mathb](https://github.com/susam/mathb), the now discontinued math pastebin in PHP.
 
 The backend is a single C++20 binary built on [Crow](https://crowcpp.org) and [sqlite_orm](https://github.com/fnc12/sqlite_orm), with posts stored in SQLite. It ships as a small Docker image for Linux `amd64` or `arm64`, and the image can be built from a Mac or Linux machine.
 
 **Catalan is in early development**. The API below is planned and not final.
 
-#### Features
+A request passes through 3 layers:
 
-- Posts - Markdown with inline and display LaTeX, stored in SQLite
-- Immutable posts - a post never changes, so every link is permanent and responses are cacheable forever
-- Edit as new - editing a post creates a new post with a `parent_id` pointing at the original
-- Unlisted posts - left out of the listing, but readable by anyone with the link
-- Stateless - no accounts, sessions, or cookies
+* [Caddy](https://caddyserver.com) as a reverse proxy, for HTTPS, rate limiting, and request size limits
+    * See details [here](#deployment)
+* The Crow routes in `main.cc` and `api.hh` - request validation, post ids, and the JSON shapes in the [OpenAPI spec](openapi.yaml)
+    * See details [here](#api)
+* SQLite storage in `manage.hh` via sqlite_orm - the schema, versioned migrations, and queries behind a single connection
+
+```mermaid
+flowchart LR
+    A[Client] -->|HTTPS| B(catalan-proxy)
+    B -->|HTTP| C(main.cc)
+    C --> D(api.hh)
+    D -->|with_storage| E(manage.hh)
+    E --> F[(SQLite)]
+
+    style A fill:#2d2d2d,stroke:#888,color:#fff
+    style B fill:#2d2d2d,stroke:#888,color:#fff
+    style C fill:#2d2d2d,stroke:#888,color:#fff
+    style D fill:#2d2d2d,stroke:#888,color:#fff
+    style E fill:#2d2d2d,stroke:#888,color:#fff
+    style F fill:#2d2d2d,stroke:#888,color:#fff
+```
+
+## Features
+
+* **Markdown with inline and display LaTeX**
+* Posts are immutable, so every link is permanent and responses are cacheable forever
+* Editing a post creates a new post, with a `parent_id` pointing at the original
+* Unlisted posts are left out of the listing, but readable by anyone with the link
+* Stateless, with no accounts, sessions, or cookies
 
 ---
 
@@ -55,23 +84,23 @@ The backend is a single C++20 binary built on [Crow](https://crowcpp.org) and [s
 > 📖 [See the OpenAPI spec here](openapi.yaml) (draft)
 
 * **Posts are immutable** - Since posts are stateless, no one can change or delete a post. "Editing" is creating a new post with a `parent_id`
-* **Unlisted, not private** - Post ids are random 12-character base62 strings (`0-9`, `a-z`, `A-Z`), so an unlisted link can't be guessed
+* **Unlisted, not private** - Post ids are random 12-character base62 strings (`0-9`, `a-z`, `A-Z`)
 
 Endpoints:
 
-- `POST /v1/posts` - create a post, or an edit of one with `parent_id`
-- `GET /v1/posts` - list posts, newest first, with `limit`, `order`, and `cursor`
-- `GET /v1/posts/{id}` - get a post
-- `GET /v1/posts/{id}/raw` - get a post's source as plain text
-- `GET /health` - `200 ok` when the database is reachable, `503` when it isn't
+* `POST /v1/posts` - create a post, or an edit of one with `parent_id`
+* `GET /v1/posts` - list posts, newest first, with `limit`, `order`, and `cursor`
+* `GET /v1/posts/{id}` - get a post
+* `GET /v1/posts/{id}/raw` - get a post's source as plain text
+* `GET /health` - `200 ok` when the database is reachable, `503` when it isn't
 
 A new post:
 
-- `body` - Markdown and LaTeX source, required
-- `title` - optional, up to 200 characters
-- `author` - optional display name, up to 64 characters, not verified
-- `unlisted` - leave it out of `GET /v1/posts`, `false` by default
-- `parent_id` - the post this one is an edit of
+* `body` - Markdown and LaTeX source, required
+* `title` - optional, up to 200 characters
+* `author` - optional display name, up to 64 characters, not verified
+* `unlisted` - leave it out of `GET /v1/posts`, `false` by default
+* `parent_id` - the post this one is an edit of
 
 The server sets `id` and `created_at`.
 
@@ -96,8 +125,8 @@ Errors are returned as [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc
 
 ## Requirements
 
-- Docker Desktop on macOS, Docker Engine 23+ on Linux
-- For native builds: CMake 3.16+, a C++20 compiler, SQLite3 headers, and git
+* Docker Desktop on macOS, Docker Engine 23+ on Linux
+* For native builds: CMake 3.16+, a C++20 compiler, SQLite3 headers, and git
 
 Dependencies are fetched by [CPM](https://github.com/cpm-cmake/CPM.cmake) on the first configure and cached in `~/.cache/CPM`. Set `CPM_SOURCE_CACHE` to change the location.
 
@@ -154,9 +183,9 @@ I personally **do not** recommend developing without at least `Address;Undefined
 
 #### CMake options
 
-- `CMAKE_BUILD_TYPE` - `Release` by default, `Debug` adds `-DDEBUG` and debug info
-- `USE_SANITIZER` - e.g. `Address;Undefined` or `Thread`
-- `CATALAN_BUILD_TESTS` - build `test_suite` and register it with CTest, `ON` by default
+* `CMAKE_BUILD_TYPE` - `Release` by default, `Debug` adds `-DDEBUG` and debug info
+* `USE_SANITIZER` - e.g. `Address;Undefined` or `Thread`
+* `CATALAN_BUILD_TESTS` - build `test_suite` and register it with CTest, `ON` by default
 
 ---
 
@@ -192,23 +221,24 @@ cmake --build build-arm64 -j
 
 Production is two containers on a private Docker network:
 
-* **catalan** - the API. `debian:trixie-slim` with `libsqlite3-0` and the stripped binary, running as an unprivileged `catalan` user (uid 10001) with the database in the `/data` volume. Never published to the host.
+* **catalan** - the API: `debian:trixie-slim` with `libsqlite3-0` and the stripped binary, running as an unprivileged `catalan` user (uid 10001) with the database in the `/data` volume. Never published to the host.
 * **catalan-proxy** - [Caddy](https://caddyserver.com) with the [rate limit plugin](https://github.com/mholt/caddy-ratelimit), built from the `proxy` stage. The only container on ports 80 and 443. Configured in [deploy/Caddyfile](deploy/Caddyfile).
 
-The proxy handles everything the API shouldn't have to:
+The proxy handles everything else:
 
-- HTTPS - certificates from Let's Encrypt, issued and renewed automatically
-- Rate limiting - 60 requests per minute per client IP, `429` with `Retry-After`
-- Body size - requests over 256 KiB get `413` before they reach the API
-- Compression - `zstd` and `gzip`
+* HTTPS - certificates from Let's Encrypt, issued and renewed automatically
+* Rate limiting - 60 requests per minute per client IP, `429` with `Retry-After`
+* Body size - requests over 256 KiB get `413` before they reach the API
+* Compression - `zstd` and `gzip`
 
-The proxy and the API are separate images on purpose. The proxy holds the TLS certificates and almost never changes, the API is redeployed often, and each container runs one process.
+The proxy holds the TLS certificates and almost never changes, the API is redeployed often, and each container runs one process.
 
 Environment variables:
 
-- `CATALAN_PORT` (catalan) - HTTP listen port, `18080` by default
-- `CATALAN_DOMAIN` (proxy) - your domain for HTTPS, e.g. `api.example.com`. Unset, the proxy serves plain HTTP on `:80`
-- `CATALAN_UPSTREAM` (proxy) - API address, `catalan:18080` by default
+* `CATALAN_PORT` (catalan) - HTTP listen port, `18080` by default
+* `CATALAN_DB` (catalan) - SQLite database path, `catalan.db` by default, i.e. `/data/catalan.db` in the volume
+* `CATALAN_DOMAIN` (proxy) - your domain for HTTPS, e.g. `api.example.com`. Unset, the proxy serves plain HTTP on `:80`
+* `CATALAN_UPSTREAM` (proxy) - API address, `catalan:18080` by default
 
 ### 1. Build and test locally
 
@@ -305,11 +335,11 @@ docker save catalan:$TAG catalan-proxy:$TAG | gzip | ssh user@server 'gunzip | d
 
 Dependencies are fetched automatically via [CPM](https://github.com/cpm-cmake/CPM.cmake).
 
-- [`Crow`](https://crowcpp.org) - HTTP and routing
-- [`asio`](https://think-async.com/Asio/) - Networking for Crow, standalone (no Boost)
-- [`sqlite_orm`](https://github.com/fnc12/sqlite_orm) - SQLite ORM
-- [`doctest`](https://github.com/doctest/doctest) - Test framework
-- [`cmake-scripts`](https://github.com/StableCoder/cmake-scripts) - Sanitizer and tooling integration
+* [`Crow`](https://crowcpp.org) - HTTP and routing
+* [`asio`](https://think-async.com/Asio/) - Networking for Crow, standalone (no Boost)
+* [`sqlite_orm`](https://github.com/fnc12/sqlite_orm) - SQLite ORM
+* [`doctest`](https://github.com/doctest/doctest) - Test framework
+* [`cmake-scripts`](https://github.com/StableCoder/cmake-scripts) - Sanitizer and tooling integration
 
 ## License
 

@@ -8,11 +8,11 @@
 #include <doctest/doctest.h> // for ResultBuilder, CHECK, TEST_CASE
 
 #include <catalan/api.hh> // for make_post_id, is_post_id, k_id_length
-#include <cstddef>        // for std::size_t
-#include <string>         // for std::string
-#include <unordered_set>  // for std::unordered_set
+#include <cstddef>        // for size_t
+#include <string>         // for basic_string, string
+#include <unordered_set>  // for unordered_set
 
-TEST_CASE("api.hh: make_post_id")
+TEST_CASE("make_post_id")
 {
     auto id = catalan::api::make_post_id();
     CHECK_EQ(id.size(), catalan::api::k_id_length);
@@ -27,7 +27,7 @@ TEST_CASE("api.hh: make_post_id")
 static_assert(catalan::api::is_post_id("7HcPq2mVa0Rn"));
 static_assert(not catalan::api::is_post_id("7HcPq2mVa0R-"));
 
-TEST_CASE("api.hh: is_post_id")
+TEST_CASE("is_post_id")
 {
     CHECK(catalan::api::is_post_id("7HcPq2mVa0Rn"));
     CHECK(catalan::api::is_post_id("000000000000"));

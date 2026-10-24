@@ -20,7 +20,7 @@ struct Row
 
 } // namespace
 
-TEST_CASE("smoke.cc: sqlite_orm in-memory round-trip")
+TEST_CASE("sqlite_orm round-trip")
 {
     using namespace sqlite_orm;
     auto storage = make_storage(":memory:",

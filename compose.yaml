@@ -19,7 +19,7 @@ services:
       - seccomp:unconfined
 
   # Production smoke test, mirrors the deploy:
-  # docker compose --profile prod up -d --build
+  # docker compose --profile prod up -d --build proxy
   catalan:
     profiles: ["prod"]
     build:

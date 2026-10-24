@@ -201,9 +201,9 @@ Environment variables:
 ### 1. Build and test locally
 
 ```bash
-docker compose --profile prod up -d --build
+docker compose --profile prod up -d --build proxy   # starts catalan too
 curl localhost:18081/health           # ok - through the proxy, APP_PORT overrides 18081
-docker compose --profile prod down
+docker compose --profile prod rm -sf proxy catalan  # leaves the dev container running
 ```
 
 ### 2. Build and push both images for the server's architecture

@@ -1,0 +1,47 @@
+services:
+  # Native arch. To emulate x86_64 on Apple Silicon:
+  # DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose up -d --build
+  dev:
+    build:
+      context: .
+      target: dev
+    volumes:
+      - .:/workspace
+      # Keeps the container's build tree apart from a host build/
+      - build:/workspace/build
+      - cpm-cache:/root/.cache/CPM
+    ports:
+      - "18080:18080"
+    # ptrace, for gdb and LeakSanitizer
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+
+  # Production smoke test, mirrors the deploy:
+  # docker compose --profile prod up -d --build
+  catalan:
+    profiles: ["prod"]
+    build:
+      context: .
+      target: runtime
+    volumes:
+      - data:/data
+
+  proxy:
+    profiles: ["prod"]
+    build:
+      context: .
+      target: proxy
+    depends_on:
+      - catalan
+    ports:
+      - "${APP_PORT:-18081}:80"
+    volumes:
+      - caddy-data:/data
+
+volumes:
+  build:
+  cpm-cache:
+  data:
+  caddy-data:

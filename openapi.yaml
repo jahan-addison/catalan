@@ -1,0 +1,470 @@
+openapi: 3.1.0
+
+info:
+  title: Catalan
+  version: 0.1.0
+  summary: A pastebin for math and LaTeX
+  description: |
+    Catalan is a pastebin for Markdown and LaTeX posts.
+
+    - **Stateless, no auth.** There are no accounts, sessions, or cookies. Every
+      request stands on its own.
+    - **Posts are immutable.** Once created, a post never changes and can't be
+      deleted. "Editing" a post creates a new post whose `parent_id` points at
+      the original.
+    - **Unlisted, not private.** Without auth nothing can be truly private. An
+      unlisted post is left out of `GET /v1/posts`, but anyone with its link
+      can read it. Post ids are random, so links can't be guessed.
+    - **Errors** use RFC 9457 Problem Details (`application/problem+json`).
+  license:
+    name: Apache 2.0
+    identifier: Apache-2.0
+
+servers:
+  - url: https://{domain}
+    description: Your deployment
+    variables:
+      domain:
+        default: api.example.com
+        description: The domain set as CATALAN_DOMAIN on the proxy
+  - url: http://localhost:18080
+    description: Local development
+
+# No auth: every operation is public
+security: []
+
+tags:
+  - name: Posts
+    description: Create, read, and list posts
+  - name: Health
+    description: Liveness for deployment checks
+
+paths:
+  /v1/posts:
+    post:
+      operationId: createPost
+      summary: Create a post
+      description: |
+        Creates a new post. To "edit" an existing post, set `parent_id` to its
+        id. The original post is left unchanged.
+      tags: [Posts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewPost'
+            examples:
+              new:
+                summary: A new post
+                value:
+                  title: Euler's identity
+                  author: Euler
+                  body: "$$e^{i\\pi} + 1 = 0$$"
+              edit:
+                summary: An edit of an existing post
+                value:
+                  title: Euler's identity (with proof)
+                  author: Euler
+                  body: "$$e^{i\\pi} = \\cos\\pi + i\\sin\\pi = -1$$"
+                  parent_id: 4fQx9ZtLb2Wk
+      responses:
+        '201':
+          description: Post created
+          headers:
+            Location:
+              description: URL of the new post
+              schema:
+                type: string
+                example: /v1/posts/7HcPq2mVa0Rn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/ContentTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      operationId: listPosts
+      summary: List posts
+      description: |
+        Lists posts, newest first by default. Unlisted posts are never included.
+        Results are paginated with a cursor: pass `next_cursor` from one
+        response as `cursor` in the next request. `next_cursor` is `null` on
+        the last page.
+      tags: [Posts]
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of posts to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: order
+          in: query
+          description: Sort by creation time
+          schema:
+            type: string
+            enum: [desc, asc]
+            default: desc
+        - name: cursor
+          in: query
+          description: Opaque cursor from a previous response's `next_cursor`
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A page of posts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/posts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PostId'
+    get:
+      operationId: getPost
+      summary: Get a post
+      description: |
+        Posts are immutable, so responses are cacheable forever. Send the
+        `ETag` back as `If-None-Match` to get a `304` with no body.
+      tags: [Posts]
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: The post
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlImmutable'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/posts/{id}/raw:
+    parameters:
+      - $ref: '#/components/parameters/PostId'
+    get:
+      operationId: getPostRaw
+      summary: Get a post's source
+      description: Returns only the post's `body` as plain text, e.g. for `curl`.
+      tags: [Posts]
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: The post's Markdown and LaTeX source
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlImmutable'
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "$$e^{i\\pi} + 1 = 0$$"
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: |
+        Returns `200` when the server can reach its database, `503` when it
+        can't. Used by deployment checks and load balancers. Not rate limited.
+      tags: [Health]
+      responses:
+        '200':
+          description: Healthy
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: ok
+        '503':
+          description: Running, but the database is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+components:
+  parameters:
+    PostId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Random 12-character base62 post id. A malformed id is treated the same
+        as an unknown one (`404`).
+      schema:
+        $ref: '#/components/schemas/PostId'
+
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      description: An `ETag` from a previous response
+      schema:
+        type: string
+
+  headers:
+    ETag:
+      description: Version tag for the post. Never changes, since posts are immutable.
+      schema:
+        type: string
+        example: '"7HcPq2mVa0Rn"'
+
+    CacheControlImmutable:
+      description: Posts never change, so clients and CDNs may cache them for a year.
+      schema:
+        type: string
+        example: public, max-age=31536000, immutable
+
+    RetryAfter:
+      description: Seconds to wait before retrying
+      schema:
+        type: integer
+        example: 30
+
+  schemas:
+    PostId:
+      type: string
+      pattern: '^[0-9A-Za-z]{12}$'
+      example: 7HcPq2mVa0Rn
+
+    NewPost:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: Optional title
+        author:
+          type: string
+          maxLength: 64
+          description: Optional display name. Not verified.
+        body:
+          type: string
+          minLength: 1
+          maxLength: 65536
+          description: Markdown with inline `$...$` and display `$$...$$` LaTeX
+        unlisted:
+          type: boolean
+          default: false
+          description: Leave the post out of `GET /v1/posts`
+        parent_id:
+          $ref: '#/components/schemas/PostId'
+          description: Id of the post this one is an edit of. Must exist.
+
+    Post:
+      type: object
+      required: [id, title, author, body, unlisted, parent_id, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/PostId'
+        title:
+          type: [string, 'null']
+        author:
+          type: [string, 'null']
+        body:
+          type: string
+        unlisted:
+          type: boolean
+        parent_id:
+          oneOf:
+            - $ref: '#/components/schemas/PostId'
+            - type: 'null'
+        created_at:
+          type: string
+          format: date-time
+          description: Set by the server, UTC
+          example: '2026-10-24T03:15:00Z'
+
+    PostSummary:
+      description: A post without its body, used in listings
+      type: object
+      required: [id, title, author, parent_id, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/PostId'
+        title:
+          type: [string, 'null']
+        author:
+          type: [string, 'null']
+        parent_id:
+          oneOf:
+            - $ref: '#/components/schemas/PostId'
+            - type: 'null'
+        created_at:
+          type: string
+          format: date-time
+
+    PostList:
+      type: object
+      required: [posts, next_cursor]
+      properties:
+        posts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostSummary'
+        next_cursor:
+          type: [string, 'null']
+          description: Pass as `cursor` to get the next page, `null` on the last page
+
+    Problem:
+      description: RFC 9457 Problem Details
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: |
+            Identifies the kind of error. A relative URI, resolved against
+            the deployment's own domain.
+          example: /problems/validation
+        title:
+          type: string
+          description: Short, human-readable summary of the kind of error
+          example: Validation failed
+        status:
+          type: integer
+          description: The HTTP status code, repeated for convenience
+          example: 422
+        detail:
+          type: string
+          description: Explanation specific to this occurrence
+          example: The request body has 2 invalid fields.
+        errors:
+          type: array
+          description: Per-field problems, for `422` responses
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field:
+                type: string
+                example: body
+              message:
+                type: string
+                example: must not be empty
+
+  responses:
+    NotModified:
+      description: The client's cached copy (from `If-None-Match`) is current. No body.
+
+    BadRequest:
+      description: |
+        The request couldn't be parsed, e.g. malformed JSON or an invalid query
+        parameter such as `limit=abc`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: /problems/malformed-request
+            title: Malformed request
+            status: 400
+            detail: Request body is not valid JSON.
+
+    NotFound:
+      description: No post has this id
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: /problems/not-found
+            title: Post not found
+            status: 404
+
+    ContentTooLarge:
+      description: The request body is larger than the server accepts (256 KiB)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    UnsupportedMediaType:
+      description: The request's `Content-Type` isn't `application/json`
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    UnprocessableContent:
+      description: |
+        The JSON is well-formed but breaks the rules, e.g. an empty `body`, a
+        field that's too long, an unknown field, or a `parent_id` that doesn't
+        exist.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: /problems/validation
+            title: Validation failed
+            status: 422
+            detail: The request body has 2 invalid fields.
+            errors:
+              - field: body
+                message: must not be empty
+              - field: parent_id
+                message: no post with id 4fQx9ZtLb2Wk
+
+    TooManyRequests:
+      description: Rate limit exceeded. With no auth, limits are per client IP.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    InternalServerError:
+      description: Something went wrong on the server. Never caused by the request.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

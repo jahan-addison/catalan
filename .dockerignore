@@ -1,0 +1,11 @@
+.git
+.github
+.vscode
+.cache
+build
+build-*
+cpm_modules
+dist
+frontend
+*.db
+decisions.md

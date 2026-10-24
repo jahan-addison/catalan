@@ -1,215 +1,304 @@
-# cadence
+<h1 align="center">catalan</h1>
+
+
+<h5 align="center">
+  A pastebin for math and LaTeX ∑
+</h5>
+
 
 ## Overview
 
-cadence is an opinionated boilerplate for modern C++ projects. It provides what I believe is essential tooling for code quality, testing, and structure for projects of any size. The build system integrates sanitizers, static analyzers, and automated formatting to catch errors, undefined behavior, and segmentation faults during all stages of development.
+Catalan is a pastebin for mathematics and LaTeX. Write a post with Markdown and/or LaTeX, get back a link to share. It's my own version of [mathb](https://github.com/susam/mathb), the now discontinued math pastebin in PHP.
 
-The boilerplate uses C++20 and includes a test suite built with `doctest`, along with pre-commit hooks for code quality enforcement via `clang-format`, `clang-tidy`, and `cppcheck`.
+The backend is a single C++20 binary built on [Crow](https://crowcpp.org) and [sqlite_orm](https://github.com/fnc12/sqlite_orm), with posts stored in SQLite. It ships as a small Docker image for Linux `amd64` or `arm64`, and the image can be built from a Mac or Linux machine.
 
-## Build
+**Catalan is in early development**. The API below is planned and not final.
 
-The recommended build command enables all available tooling:
+#### Features
 
-```bash
-cmake -Bbuild -DCMAKE_BUILD_TYPE=Debug -DUSE_SANITIZER="Address;Undefined" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DIWYU=ON
-cmake --build build
-```
-
-For release builds, omit sanitizers and debug symbols:
-
-```bash
-cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-```
-
-#### Windows
-
-```bash
-cmake -Bbuild -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-cmake --build build
-```
-
-Or with `ninja`:
-
-```bash
-cmake -Bbuild -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-cmake --build build
-```
+- Posts - Markdown with inline and display LaTeX, stored in SQLite
+- Immutable posts - a post never changes, so every link is permanent and responses are cacheable forever
+- Edit as new - editing a post creates a new post with a `parent_id` pointing at the original
+- Unlisted posts - left out of the listing, but readable by anyone with the link
+- Stateless - no accounts, sessions, or cookies
 
 ---
 
-Run the test suite:
+## API
+
+> 📖 [See the OpenAPI spec here](openapi.yaml) (draft)
+
+* **Posts are immutable** - Since posts are stateless, no one can change or delete a post. "Editing" is creating a new post with a `parent_id`
+* **Unlisted, not private** - Post ids are random 12-character base62 strings (`0-9`, `a-z`, `A-Z`), so an unlisted link can't be guessed
+
+Endpoints:
+
+- `POST /v1/posts` - create a post, or an edit of one with `parent_id`
+- `GET /v1/posts` - list posts, newest first, with `limit`, `order`, and `cursor`
+- `GET /v1/posts/{id}` - get a post
+- `GET /v1/posts/{id}/raw` - get a post's source as plain text
+- `GET /health` - `200 ok` when the database is reachable, `503` when it isn't
+
+A new post:
+
+- `body` - Markdown and LaTeX source, required
+- `title` - optional, up to 200 characters
+- `author` - optional display name, up to 64 characters, not verified
+- `unlisted` - leave it out of `GET /v1/posts`, `false` by default
+- `parent_id` - the post this one is an edit of
+
+The server sets `id` and `created_at`.
+
+### Status codes
+
+Errors are returned as [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`), so every error has the same shape:
+
+```json
+{
+  "type": "/problems/validation",
+  "title": "Validation failed",
+  "status": 422,
+  "detail": "The request body has 2 invalid fields.",
+  "errors": [
+    { "field": "body", "message": "must not be empty" },
+    { "field": "parent_id", "message": "no post with id 4fQx9ZtLb2Wk" }
+  ]
+}
+```
+
+The rule of thumb: `2xx` means it worked, `4xx` means the client should change its request, `5xx` means the server failed and the same request may work later.
+
+- `200 OK` - a successful read
+- `201 Created` - a post was created, the `Location` header has its URL
+- `304 Not Modified` - the client's cached copy is current, sent when `If-None-Match` matches the `ETag`
+- `400 Bad Request` - the request can't be parsed, e.g. malformed JSON or `limit=abc`
+- `404 Not Found` - no post has this id, a malformed id is treated the same way
+- `413 Content Too Large` - the request body is over 256 KiB, enforced by the proxy
+- `415 Unsupported Media Type` - the `Content-Type` isn't `application/json`
+- `422 Unprocessable Content` - valid JSON that breaks the rules, e.g. an empty `body` or a `parent_id` that doesn't exist
+- `429 Too Many Requests` - rate limited per client IP by the proxy, `Retry-After` says how many seconds to wait
+- `500 Internal Server Error` - a bug or failure on the server, never the client's fault
+- `503 Service Unavailable` - from `/health` only, the database is unreachable
+
+**Note**: `400` vs `422` is the distinction worth learning first. `400` means "I couldn't read that", `422` means "I read it, and it's not allowed".
+
+---
+
+## Requirements
+
+- Docker with BuildKit/buildx - Docker Desktop on macOS, Docker Engine 23+ on Linux
+- For native builds: CMake 3.16+, a C++20 compiler, SQLite3 headers, and git
+
+Dependencies are fetched by [CPM](https://github.com/cpm-cmake/CPM.cmake) on the first configure and cached in `~/.cache/CPM`. Set `CPM_SOURCE_CACHE` to change the location.
+
+## Development
+
+There are two ways to develop: inside the dev container, which matches production, or natively on your machine.
+
+### Dev container
+
+The dev container is Debian at your machine's native architecture, `arm64` on Apple Silicon and `amd64` on most Linux machines. There is no emulation, so builds run at full speed and sanitizers work:
 
 ```bash
+docker compose up -d --build          # build the toolchain image and start it
+docker compose exec dev bash          # shell in /workspace
+
+# inside the container:
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DUSE_SANITIZER="Address;Undefined"
+cmake --build build -j
 ./build/test_suite
+./build/catalan                       # http://localhost:18080/health
 ```
 
-## Installation
+The source tree is bind-mounted, so edit on the host and rebuild in the container. The container's `build/` is a Docker volume, i.e. separate from a host `build/`.
 
-### macOS
-
-Install dependencies with Homebrew:
+To develop on x86_64 from Apple Silicon, run the container under emulation. It is slower, and AddressSanitizer may not work:
 
 ```bash
-brew install cmake llvm cppcheck
-brew install --HEAD include-what-you-use
+docker compose down -v                # drop the arm64 build volume first
+DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose up -d --build
 ```
 
-Valgrind is not officially supported on modern macOS. Use sanitizers instead.
+`docker compose down` stops the container, add `-v` to also delete the build and CPM cache volumes.
 
-### Linux
-
-For Debian/Ubuntu:
+### Native
 
 ```bash
-sudo apt-get install cmake clang-tidy clang-format cppcheck valgrind iwyu
-```
+# macOS
+brew install cmake sqlite
 
-For Fedora/RHEL:
+# Ubuntu
+sudo apt install build-essential cmake git libsqlite3-dev
+```
 
 ```bash
-sudo dnf install cmake clang-tools-extra cppcheck valgrind iwyu
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DUSE_SANITIZER="Address;Undefined" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build build -j
+./build/test_suite
+./build/catalan
 ```
 
-### Windows
+I personally **do not** recommend developing without at least `Address;Undefined`.
+
+#### CMake options
+
+- `CMAKE_BUILD_TYPE` - `Release` by default, `Debug` adds `-DDEBUG` and debug info
+- `USE_SANITIZER` - e.g. `Address;Undefined` or `Thread`
+- `CATALAN_BUILD_TESTS` - build `test_suite` and register it with CTest, `ON` by default
+
+---
+
+## Cross-compiling
+
+The `builder` stage of the `Dockerfile` always runs on the build machine's native architecture and cross-compiles with Debian's GCC cross toolchain (`crossbuild-essential-<arch>`) and multiarch `libsqlite3-dev:<arch>`. There is no QEMU involved, so an `amd64` build from an M-series Mac compiles at native speed.
+
+Build a Linux binary without an image:
 
 ```bash
-# Install MSYS2 from https://www.msys2.org/
-pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
-pacman -S mingw-w64-x86_64-cppcheck mingw-w64-x86_64-clang-tools-extra
+docker buildx build --platform linux/amd64 --target artifact --output type=local,dest=dist .
+file dist/catalan    # ELF 64-bit LSB pie executable, x86-64 ...
 ```
 
-**Note**: Sanitizers, Valgrind, and IWYU have limited or no support on Windows.
+The binary links dynamically against glibc, libstdc++, and libsqlite3 from Debian trixie - run it on a matching or newer distro, or use the image.
 
-#### MSVC
-
-The CMakeLists.txt includes MSVC-specific flags (`/W4 /WX`).
-
-## Tooling
-
-### Sanitizers
-
-The build system supports multiple sanitizers via `-DUSE_SANITIZER`. These are runtime instrumentation tools that detect bugs during program execution.
-
-- **AddressSanitizer**: Detects memory errors like use-after-free, buffer overflows, and stack corruption
-- **UndefinedBehaviorSanitizer**: Catches undefined behavior such as integer overflow, null pointer dereferences, and misaligned memory access
-- **MemorySanitizer**: Detects uninitialized memory reads (requires special libc build)
-- **ThreadSanitizer**: Detects data races in multithreaded code
-- **LeakSanitizer**: Detects memory leaks
-
-Sanitizers impose runtime overhead but catch bugs that static analysis tools miss. I personally **do not** recommend developing in C++ without at least `Address;Undefined`.
-
-### Pre-commit Hooks
-
-The `.pre-commit-config.yaml` defines git hooks that run automatically before commits:
-
-- **conventional-pre-commit**: Enforces conventional commit message format
-- **clang-format**: Formats code automatically
-- **clang-tidy**: Runs static analysis
-- **cppcheck**: Performs additional static checks
-
-Install pre-commit hooks:
+To cross-compile without Docker on a Debian/Ubuntu host, use a toolchain file from `cmake/toolchains/`:
 
 ```bash
-pip install pre-commit
-pre-commit install
-pre-commit install --hook-type commit-msg
+sudo dpkg --add-architecture arm64 && sudo apt update
+sudo apt install crossbuild-essential-arm64 libsqlite3-dev:arm64
+
+cmake -B build-arm64 -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/linux-arm64.cmake \
+      -DCMAKE_BUILD_TYPE=Release -DCATALAN_BUILD_TESTS=OFF
+cmake --build build-arm64 -j
 ```
 
-### Valgrind
+**Note**: When cross-compiling, `test_suite` still builds but doctest's test discovery is skipped, since the host can't run it. Copy it to a matching machine to run it, or pass `-DCATALAN_BUILD_TESTS=OFF`.
 
-Valgrind is a dynamic analysis tool that detects memory management issues and profiling. The `memcheck` tool finds memory leaks, invalid memory access, and use of uninitialized memory. Unlike sanitizers, Valgrind requires no recompilation but runs significantly slower.
+---
 
-Run valgrind on the test suite:
+## Deployment
+
+Production is two containers on a private Docker network:
+
+* **catalan** - the API. `debian:trixie-slim` with `libsqlite3-0` and the stripped binary, running as an unprivileged `catalan` user (uid 10001) with the database in the `/data` volume. Never published to the host.
+* **catalan-proxy** - [Caddy](https://caddyserver.com) with the [rate limit plugin](https://github.com/mholt/caddy-ratelimit), built from the `proxy` stage. The only container on ports 80 and 443. Configured in [deploy/Caddyfile](deploy/Caddyfile).
+
+The proxy handles everything the API shouldn't have to:
+
+- HTTPS - certificates from Let's Encrypt, issued and renewed automatically
+- Rate limiting - 60 requests per minute per client IP, `429` with `Retry-After`
+- Body size - requests over 256 KiB get `413` before they reach the API
+- Compression - `zstd` and `gzip`
+
+The proxy and the API are separate images on purpose. The proxy holds the TLS certificates and almost never changes, the API is redeployed often, and each container runs one process.
+
+Environment variables:
+
+- `CATALAN_PORT` (catalan) - HTTP listen port, `18080` by default
+- `CATALAN_DOMAIN` (proxy) - your domain for HTTPS, e.g. `api.example.com`. Unset, the proxy serves plain HTTP on `:80`
+- `CATALAN_UPSTREAM` (proxy) - API address, `catalan:18080` by default
+
+### 1. Build and test locally
 
 ```bash
-valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ./build/test_suite
+docker compose --profile prod up -d --build
+curl localhost:18081/health           # ok - through the proxy, APP_PORT overrides 18081
+docker compose --profile prod down
 ```
 
-Valgrind is particularly useful on Linux platforms where it has mature support. The CI pipeline runs valgrind automatically on x86_64 Linux builds.
-
-### clang-tidy
-
-A static analysis tool that performs linting and suggests modernization improvements. It checks for common programming errors, style violations, and provides automated fixes. Configuration is in `.clang-tidy`, which scopes checks to `clang-diagnostic-*`, `clang-analyzer-*`, `bugprone-*`, `performance-*`, and `portability-*`, and restricts `HeaderFilterRegex` so third-party CPM dependencies aren't reported on.
-
-Run the full project through `clang-tidy` with:
+### 2. Build and push both images for the server's architecture
 
 ```bash
-cmake --build build --target tidy
+export IMAGE=ghcr.io/<you>/catalan    # or Docker Hub, ECR, etc.
+export TAG=$(git rev-parse --short HEAD)
+
+docker login ghcr.io                  # once per machine
+
+# linux/amd64, linux/arm64, or both
+docker buildx build --platform linux/amd64 \
+  -t "$IMAGE:$TAG" -t "$IMAGE:latest" --push .
+
+docker buildx build --platform linux/amd64 --target proxy \
+  -t "$IMAGE-proxy:$TAG" -t "$IMAGE-proxy:latest" --push .
 ```
 
-This target runs `run-clang-tidy` in parallel across all cores and treats warnings as errors, so it fails the build the same way a broken compile would. It also de-duplicates `compile_commands.json` first via `cmake/dedup_compile_commands.cmake` -- any source compiled into more than one target (a library and its test binary) would otherwise get linted once per target, doubling the runtime cost. Which files get linted is controlled by `CLANG_TIDY_IGNORE_REGEX`, a cache variable you can override per project (`test/` and CPM's cache are excluded by default).
+For a multi-arch image pass `--platform linux/amd64,linux/arm64`. Docker Desktop handles this out of the box. On Docker Engine without the containerd image store, run `docker buildx create --use` once to switch to a `docker-container` builder.
 
-The pre-commit hook (`.pre-commit-config.yaml`) still runs `clang-tidy` per-file on your staged changes, which is faster for a single commit; the CMake target is for linting everything, e.g. in CI.
+### 3. Run on the server
 
-### clang-format
+You need a domain for HTTPS. Point its DNS `A`/`AAAA` record at the server and open ports 80 and 443 first - Let's Encrypt needs both to issue the certificate.
 
-An automated code formatter that enforces consistent style. Configuration is in `.clang-format` (create as needed). The pre-commit hook applies formatting automatically before commits.
-
-Run manually:
+Once, on a new server:
 
 ```bash
-clang-format -i cadence/**/*.{cc,h}
+docker network create catalan
 ```
 
-### cppcheck
-
-A static analysis tool for C++ that detects bugs, undefined behavior, and dangerous coding constructs. It complements compiler warnings and clang-tidy by checking for issues both tools might miss.
-
-Configuration is in `cppcheck.suppress` which excludes false positives and third-party dependencies. The tool runs via pre-commit hooks with:
+Set your domain for the commands below:
 
 ```bash
-cppcheck --enable=all --inline-suppr --error-exitcode=1 --language=c++ -I. --suppressions-list=./cppcheck.suppress
+export CATALAN_DOMAIN=api.example.com    # your domain
 ```
 
-### Include What You Use (IWYU)
+The API:
 
-A tool that analyzes `#include` directives and suggests correct headers. Enable with `-DIWYU=ON` to run during compilation. It helps minimize header dependencies and reduce compilation time.
+```bash
+docker pull "$IMAGE:$TAG"
 
-IWYU integrates directly into the build process and reports warnings during compilation. The tool is strict and may require manual tuning via pragmas.
+docker rm -f catalan 2>/dev/null || true
+docker run -d --name catalan \
+  --network catalan \
+  --restart unless-stopped \
+  -v catalan-data:/data \
+  "$IMAGE:$TAG"
+```
 
-### CMake Tools
+The proxy, only when it's new or `deploy/Caddyfile` changed:
 
-The project uses `cmake-scripts` from StableCoder which provides additional CMake functionality:
+```bash
+docker pull "$IMAGE-proxy:$TAG"
 
-- **Sanitizer support**: Easy sanitizer integration via `sanitizers.cmake`
-- **Code coverage**: Generate coverage reports with LLVM or GCC
-- **Compiler options**: Consolidated compiler warning flags
+docker rm -f catalan-proxy 2>/dev/null || true
+docker run -d --name catalan-proxy \
+  --network catalan \
+  --restart unless-stopped \
+  -p 80:80 -p 443:443 -p 443:443/udp \
+  -e CATALAN_DOMAIN \
+  -v caddy-data:/data \
+  -v caddy-config:/config \
+  "$IMAGE-proxy:$TAG"
+```
 
-These are automatically fetched via CPM (CMake Package Manager) during configuration.
+```bash
+docker logs -f catalan-proxy          # watch the certificate get issued
+curl -fsS "https://$CATALAN_DOMAIN/health"
+```
+
+`catalan-data` holds the SQLite database and `caddy-data` holds the certificates, both survive container replacement. **Don't delete `caddy-data`** - Let's Encrypt rate limits certificate issuance, and losing it means re-issuing. To use a host directory for the database instead (`-v /srv/catalan:/data`), make it writable by the container user first with `sudo chown 10001:10001 /srv/catalan`.
+
+A routine deploy is only the API block. Requests fail for the second or two while the container restarts.
+
+To roll back, re-run the API block with an earlier `$TAG`.
+
+#### Note: Without a registry, the images can be copied over SSH:
+
+```bash
+docker buildx build --platform linux/amd64 -t catalan:$TAG --load .
+docker buildx build --platform linux/amd64 --target proxy -t catalan-proxy:$TAG --load .
+docker save catalan:$TAG catalan-proxy:$TAG | gzip | ssh user@server 'gunzip | docker load'
+# then run step 3 on the server with catalan:$TAG and catalan-proxy:$TAG
+```
 
 ## Dependencies
 
-Dependencies are managed via CPM and fetched automatically:
+Dependencies are fetched automatically via [CPM](https://github.com/cpm-cmake/CPM.cmake).
 
-- `doctest` - Fast, header-only testing framework
-- `fmt` - Fast, type-safe formatting library
-- `matchit` - Pattern matching for C++
-- `cmake-scripts` - Additional CMake utilities
+- [`Crow`](https://crowcpp.org) - HTTP and routing
+- [`asio`](https://think-async.com/Asio/) - Networking for Crow, standalone (no Boost)
+- [`sqlite_orm`](https://github.com/fnc12/sqlite_orm) - SQLite ORM
+- [`doctest`](https://github.com/doctest/doctest) - Test framework
+- [`cmake-scripts`](https://github.com/StableCoder/cmake-scripts) - Sanitizer and tooling integration
 
-To add dependencies, edit `CMakeLists.txt` and use `cpmaddpackage`.
+## License
 
-## Project Structure
-
-```
-cadence/
-├── cadence/          Source files
-│   ├── hello.cc
-│   ├── hello.h
-│   └── main.cc
-├── test/               Test files
-│   ├── hello.cc
-│   └── main.cc
-├── cmake/              CMake modules
-│   ├── CPM.cmake
-│   └── doctest.cmake
-├── CMakeLists.txt      Build configuration
-├── .pre-commit-config.yaml
-└── cppcheck.suppress   Cppcheck suppressions
-```
-
-## Extras
-
-Notes, books on C++: https://soliloq.uy/my-cpp-notes-documents-books/
-
-The license is CC0 1.0 Universal, i.e. "public domain." Replace with your own license.
+Apache License, Version 2.0. See [LICENSE](LICENSE).

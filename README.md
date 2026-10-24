@@ -72,7 +72,7 @@ flowchart LR
 ## Features
 
 * **Markdown with inline and display LaTeX**
-* Posts are immutable, so every link is permanent and responses are cacheable forever
+* Posts are immutable, and every edit is a new post with its own link
 * Editing a post creates a new post, with a `parent_id` pointing at the original
 * Unlisted posts are left out of the listing, but readable by anyone with the link
 * Stateless, with no accounts, sessions, or cookies
@@ -83,7 +83,7 @@ flowchart LR
 
 > 📖 [See the OpenAPI spec here](openapi.yaml) (draft)
 
-* **Posts are immutable** - Since posts are stateless, no one can change or delete a post. "Editing" is creating a new post with a `parent_id`
+* **Posts are immutable** - Since posts are stateless, no one can change or delete a post through the API. "Editing" is creating a new post with a `parent_id`, and an operator can remove a post, see [Removing a post](#removing-a-post)
 * **Unlisted, not private** - Post ids are random 12-character base62 strings (`0-9`, `a-z`, `A-Z`)
 
 Endpoints:
@@ -359,6 +359,32 @@ docker save catalan:$TAG catalan-proxy:$TAG | gzip | ssh user@server 'gunzip | d
 # then run step 3 on the server with catalan:$TAG and catalan-proxy:$TAG
 ```
 
+### Removing a post
+
+The API has no way to delete a post. For abuse or illegal content, the operator CLI in `admin/` removes posts directly from the database, alongside the running server. It's built from the `admin` stage, with the same uid as the server so SQLite's files stay owned by it:
+
+```bash
+docker buildx build --platform linux/amd64 --target admin \
+  -t "$IMAGE-admin:$TAG" --push .
+
+# on the server
+docker run --rm -it -v catalan-data:/data "$IMAGE-admin:$TAG" show <id>
+docker run --rm -it -v catalan-data:/data "$IMAGE-admin:$TAG" remove <id>
+```
+
+`show` prints the post and every edit of it, and `remove` asks for confirmation (`--yes` skips it). A post with edits isn't removed unless you pass `--with-edits`, which also removes the edits of its edits.
+
+A removed post returns `404` right away, including to clients revalidating with its `ETag`. Browsers may keep showing a copy they already cached for up to a day (`Cache-Control: max-age=86400`), and nothing can recall a copy someone saved.
+
+To work on the CLI itself:
+
+```bash
+cd admin
+poetry install
+make test                                      # mypy, flake8, then pytest
+poetry run python -m catalan_admin --db ../catalan.db show <id>
+```
+
 ## Dependencies
 
 Dependencies are fetched automatically via [CPM](https://github.com/cpm-cmake/CPM.cmake).
@@ -368,6 +394,8 @@ Dependencies are fetched automatically via [CPM](https://github.com/cpm-cmake/CP
 * [`sqlite_orm`](https://github.com/fnc12/sqlite_orm) - SQLite ORM
 * [`doctest`](https://github.com/doctest/doctest) - Test framework
 * [`cmake-scripts`](https://github.com/StableCoder/cmake-scripts) - Sanitizer and tooling integration
+
+The operator CLI in `admin/` uses only the Python standard library. Its development tools (`mypy`, `flake8`, `black`, `pytest`) are managed by [Poetry](https://python-poetry.org).
 
 ## License
 

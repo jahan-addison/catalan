@@ -323,8 +323,8 @@ TEST_CASE("get_post")
         auto res = catalan::api::get_post(db, crow::request{}, id);
         CHECK_EQ(res.code, 200);
         CHECK_EQ(res.get_header_value("ETag"), "\"" + id + "\"");
-        CHECK_EQ(res.get_header_value("Cache-Control"),
-            "public, max-age=31536000, immutable");
+        CHECK_EQ(
+            res.get_header_value("Cache-Control"), "public, max-age=86400");
         CHECK_EQ(std::string{ crow::json::load(res.body)["id"].s() }, id);
     }
 
@@ -335,6 +335,16 @@ TEST_CASE("get_post")
         auto res = catalan::api::get_post(db, req, id);
         CHECK_EQ(res.code, 304);
         CHECK(res.body.empty());
+    }
+
+    SUBCASE("404, not 304, for a removed post")
+    {
+        db.with_storage([&](auto& storage) {
+            storage.template remove<catalan::orm::Post>(id);
+        });
+        crow::request req{};
+        req.headers.emplace("If-None-Match", "\"" + id + "\"");
+        CHECK_EQ(catalan::api::get_post(db, req, id).code, 404);
     }
 
     SUBCASE("404 for unknown and malformed ids")

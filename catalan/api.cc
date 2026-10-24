@@ -38,8 +38,9 @@ namespace {
 
 inline constexpr std::string_view k_json_type = "application/json";
 inline constexpr std::string_view k_problem_type = "application/problem+json";
-inline constexpr std::string_view k_cache_immutable =
-    "public, max-age=31536000, immutable";
+// a day, then a cheap revalidation with the ETag, so a removed post leaves
+// caches within a day
+inline constexpr std::string_view k_cache_control = "public, max-age=86400";
 
 /**
  * @brief Length in Unicode code points, the unit of JSON Schema's maxLength
@@ -174,8 +175,8 @@ crow::response internal_error(std::string_view where,
  * @brief Look up a post and answer for GET /v1/posts/{id} and its /raw
  *
  * The 404, 304, and cache headers are the same for both, only the 200 body
- * differs. A malformed id and a matching If-None-Match never touch the
- * database.
+ * differs. A malformed id never touches the database. The post is looked up
+ * before answering 304, since an operator can remove it, see admin/.
  */
 template<typename Render>
 crow::response respond_with_post(orm::Database& db,
@@ -185,15 +186,6 @@ crow::response respond_with_post(orm::Database& db,
 {
     if (not is_post_id(id))
         return problem(404, "Post not found");
-
-    auto const etag = etag_for(id);
-    auto const& match = req.get_header_value("If-None-Match");
-    if (not match.empty() and if_none_match(match, etag)) {
-        crow::response res{ 304 };
-        res.set_header("ETag", etag);
-        res.set_header("Cache-Control", std::string{ k_cache_immutable });
-        return res;
-    }
 
     std::optional<orm::Post> post{};
     try {
@@ -206,9 +198,18 @@ crow::response respond_with_post(orm::Database& db,
     if (not post)
         return problem(404, "Post not found");
 
+    auto const etag = etag_for(id);
+    auto const& match = req.get_header_value("If-None-Match");
+    if (not match.empty() and if_none_match(match, etag)) {
+        crow::response res{ 304 };
+        res.set_header("ETag", etag);
+        res.set_header("Cache-Control", std::string{ k_cache_control });
+        return res;
+    }
+
     crow::response res = render(*post);
     res.set_header("ETag", etag);
-    res.set_header("Cache-Control", std::string{ k_cache_immutable });
+    res.set_header("Cache-Control", std::string{ k_cache_control });
     return res;
 }
 

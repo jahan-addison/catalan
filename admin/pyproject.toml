@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "catalan-admin"
+version = "0.1.0"
+description = "Operator CLI for the catalan database"
+authors = ["Jahan Addison"]
+license = "Apache-2.0"
+packages = [{ include = "catalan_admin" }]
+
+[tool.flake8]
+max-line-length = 90
+
+[tool.poetry.dependencies]
+python = ">=3.11"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.13.0"
+flake8 = "^7.1"
+flake8-pyproject = "^1.2.4"
+black = "^25.12.0"
+pytest = "^8"
+pytest-cov = "^6"
+
+[tool.coverage.run]
+omit = [
+    "catalan_admin/__main__.py",
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

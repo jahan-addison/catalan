@@ -103,6 +103,25 @@ COPY --from=proxy-builder /usr/bin/caddy /usr/bin/caddy
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 
 # ##############################################################################
+# admin (--target admin, the operator CLI in admin/)
+# ##############################################################################
+
+# Same uid as runtime, so SQLite's -wal and -shm files stay owned by the server
+FROM python:3.14-slim AS admin
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/opt/catalan-admin
+
+RUN useradd --system --uid 10001 --home-dir /data catalan
+
+COPY admin/catalan_admin /opt/catalan-admin/catalan_admin
+
+USER catalan
+WORKDIR /data
+
+ENTRYPOINT ["python", "-m", "catalan_admin"]
+
+# ##############################################################################
 # runtime (default target, buildx resolves it to --platform)
 # ##############################################################################
 

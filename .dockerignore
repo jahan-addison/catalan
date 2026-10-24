@@ -9,3 +9,4 @@ dist
 frontend
 *.db
 decisions.md
+admin/.venv

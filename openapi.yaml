@@ -10,8 +10,9 @@ info:
     - **Stateless, no auth.** There are no accounts, sessions, or cookies. Every
       request stands on its own.
     - **Posts are immutable.** Once created, a post never changes and can't be
-      deleted. "Editing" a post creates a new post whose `parent_id` points at
-      the original.
+      deleted through the API. "Editing" a post creates a new post whose
+      `parent_id` points at the original. An operator can remove a post for
+      abuse or illegal content, after which it returns `404`.
     - **Unlisted** An unlisted post is left out of `GET /v1/posts`, but anyone with its link
       can read it. Post ids are random, so links can't be guessed.
     - **Errors** use RFC 9457 Problem Details (`application/problem+json`).
@@ -156,8 +157,9 @@ paths:
       operationId: getPost
       summary: Get a post
       description: |
-        Posts are immutable, so responses are cacheable forever. Send the
-        `ETag` back as `If-None-Match` to get a `304` with no body.
+        Responses are cacheable for a day. Send the `ETag` back as
+        `If-None-Match` to get a `304` with no body. A removed post is a `404`,
+        even with a matching `If-None-Match`.
       tags: [Posts]
       parameters:
         - $ref: '#/components/parameters/IfNoneMatch'
@@ -168,7 +170,7 @@ paths:
             ETag:
               $ref: '#/components/headers/ETag'
             Cache-Control:
-              $ref: '#/components/headers/CacheControlImmutable'
+              $ref: '#/components/headers/CacheControl'
           content:
             application/json:
               schema:
@@ -199,7 +201,7 @@ paths:
             ETag:
               $ref: '#/components/headers/ETag'
             Cache-Control:
-              $ref: '#/components/headers/CacheControlImmutable'
+              $ref: '#/components/headers/CacheControl'
           content:
             text/plain:
               schema:
@@ -278,11 +280,13 @@ components:
         type: string
         example: '"7HcPq2mVa0Rn"'
 
-    CacheControlImmutable:
-      description: Posts never change, so clients and CDNs may cache them for a year.
+    CacheControl:
+      description: |
+        Posts never change, but an operator can remove one, so caches keep a
+        post for a day and then revalidate it with the `ETag`.
       schema:
         type: string
-        example: public, max-age=31536000, immutable
+        example: public, max-age=86400
 
     IdempotentReplayed:
       description: |

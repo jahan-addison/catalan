@@ -4,3 +4,8 @@ cpm_modules
 dist
 .cache
 decisions.md
+admin/.venv
+.coverage
+.pytest_cache
+.mypy_cache
+__pycache__

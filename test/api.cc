@@ -7,15 +7,16 @@
 
 #include <doctest/doctest.h> // for ResultBuilder, CHECK, TEST_CASE
 
-#include "fixture.hh"        // for Temp_Database_Path
-#include <catalan/api.hh>    // for create_post, get_post, list_posts, ...
-#include <catalan/manage.hh> // for Database, Cursor
-#include <crow.h>            // for request, response, json
-#include <cstddef>           // for size_t
-#include <cstdint>           // for int64_t
-#include <string>            // for basic_string, string
-#include <string_view>       // for string_view
-#include <unordered_set>     // for unordered_set
+#include "fixture.hh"           // for Temp_Database_Path
+#include <catalan/api.hh>       // for create_post, get_post, list_posts, ...
+#include <catalan/manage.hh>    // for Database, Cursor
+#include <catalan/turnstile.hh> // for Result
+#include <crow.h>               // for request, response, json
+#include <cstddef>              // for size_t
+#include <cstdint>              // for int64_t
+#include <string>               // for basic_string, string
+#include <string_view>          // for string_view
+#include <unordered_set>        // for unordered_set
 
 namespace {
 
@@ -396,6 +397,89 @@ TEST_CASE("create_post with Idempotency-Key")
             catalan::api::create_post(db, make_request(R"({ "body": "x" })"));
         CHECK_NE(first.get_header_value("Location"),
             again.get_header_value("Location"));
+    }
+}
+
+TEST_CASE("create_post with Turnstile")
+{
+    using catalan::turnstile::Result;
+    Temp_Database_Path temp{};
+    catalan::orm::Database db{ temp.string() };
+
+    std::string seen_token{};
+    std::string seen_ip{};
+    auto const verifier = [&](Result result) {
+        return [&, result](std::string_view token, std::string_view ip) {
+            seen_token = std::string{ token };
+            seen_ip = std::string{ ip };
+            return token.empty() ? Result::failed : result;
+        };
+    };
+
+    auto const request = [](std::string token) {
+        auto req = make_request(R"({ "body": "x" })");
+        if (not token.empty())
+            req.headers.emplace("Turnstile-Token", std::move(token));
+        req.headers.emplace("X-Forwarded-For", "203.0.113.7, 10.0.0.2");
+        return req;
+    };
+
+    SUBCASE("a passing token creates the post, with the client's IP")
+    {
+        auto res = catalan::api::create_post(
+            db, request("token-1"), verifier(Result::passed));
+        CHECK_EQ(res.code, 201);
+        CHECK_EQ(seen_token, "token-1");
+        CHECK_EQ(seen_ip, "203.0.113.7");
+    }
+
+    SUBCASE("a missing or failing token is a 403")
+    {
+        auto missing = catalan::api::create_post(
+            db, request(""), verifier(Result::passed));
+        CHECK_EQ(missing.code, 403);
+        CHECK_EQ(std::string{ crow::json::load(missing.body)["type"].s() },
+            "/problems/verification-failed");
+
+        auto failed = catalan::api::create_post(
+            db, request("token-1"), verifier(Result::failed));
+        CHECK_EQ(failed.code, 403);
+    }
+
+    SUBCASE("Cloudflare unreachable is a 503")
+    {
+        auto res = catalan::api::create_post(
+            db, request("token-1"), verifier(Result::unavailable));
+        CHECK_EQ(res.code, 503);
+    }
+
+    SUBCASE("a replay needs no token, its first attempt spent it")
+    {
+        auto first = request("token-1");
+        first.headers.emplace(
+            "Idempotency-Key", "\"8e03978e-40d5-43e8-bc93-6894a57f9324\"");
+        CHECK_EQ(
+            catalan::api::create_post(db, first, verifier(Result::passed)).code,
+            201);
+
+        auto retry = request("");
+        retry.headers.emplace(
+            "Idempotency-Key", "\"8e03978e-40d5-43e8-bc93-6894a57f9324\"");
+        auto res =
+            catalan::api::create_post(db, retry, verifier(Result::failed));
+        CHECK_EQ(res.code, 201);
+        CHECK_EQ(res.get_header_value("Idempotent-Replayed"), "true");
+    }
+
+    SUBCASE("invalid fields are a 422 before the token is spent")
+    {
+        seen_token.clear();
+        auto req = make_request(R"({ "body": "" })");
+        req.headers.emplace("Turnstile-Token", "token-1");
+        CHECK_EQ(
+            catalan::api::create_post(db, req, verifier(Result::passed)).code,
+            422);
+        CHECK(seen_token.empty());
     }
 }
 

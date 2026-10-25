@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import Human_Check from "../components/Human_Check.svelte";
   import Post_List from "../components/Post_List.svelte";
   import Rendered from "../components/Rendered.svelte";
   import {
@@ -19,6 +20,8 @@
   let { edit }: { edit: string | null } = $props();
 
   const author_key = "catalan:author";
+  // the human check, off when the site has no Turnstile site key
+  const site_key = import.meta.env.VITE_TURNSTILE_SITE_KEY?.trim() ?? "";
   const body_limit = 65536;
   let title = $state("");
   let author = $state(read_author());
@@ -34,6 +37,8 @@
   let publishing = $state(false);
   let tab: "write" | "preview" = $state("write");
   let recent: Post_Summary[] = $state([]);
+  let human_token: string | null = $state(null);
+  let human_check: Human_Check | null = $state(null);
 
   const draft = new Draft_Key();
   const length = $derived([...body].length);
@@ -90,22 +95,31 @@
     field_errors = {};
     error = "";
 
+    if (site_key && !human_token) {
+      error = "Still checking that you're human, publish again in a moment.";
+      return;
+    }
+
     const post = new_post();
     publishing = true;
     try {
-      const created = await create_post(post, draft.key_for(post));
+      const created = await create_post(post, draft.key_for(post), human_token);
       remember_author();
       navigate(`/${created.id}`);
     } catch (failure) {
       if (failure instanceof Api_Error && failure.status === 422 && failure.problem?.errors) {
+        // validation runs before the human check, so the token is unspent
         field_errors = Object.fromEntries(
           failure.problem.errors.map((e) => [e.field, e.message]),
         );
         if (field_errors.body) tab = "write";
-      } else if (failure instanceof Api_Error) {
-        error = failure.message;
       } else {
-        error = "Couldn't reach catalan. Publishing again is safe, it won't make a duplicate.";
+        // the token may be spent, tokens are single use
+        human_check?.reset();
+        error =
+          failure instanceof Api_Error
+            ? failure.message
+            : "Couldn't reach catalan. Publishing again is safe, it won't make a duplicate.";
       }
     } finally {
       publishing = false;
@@ -210,10 +224,15 @@
       <input type="checkbox" bind:checked={unlisted} />
       <span>Unlisted</span>
     </label>
+    <span class="consent">By publishing, you agree to the <a href="/terms">terms</a>.</span>
     <span class="hint" class:explains={untouched}>
       {untouched ? "Edit or clear the example to publish" : "⌘ Enter to publish"}
     </span>
   </div>
+
+  {#if site_key}
+    <Human_Check bind:this={human_check} {site_key} on_token={(token) => (human_token = token)} />
+  {/if}
 
   {#if error}<p class="field-error" role="alert">{error}</p>{/if}
 </section>
@@ -363,8 +382,9 @@
 
   .actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 20px;
+    gap: 12px 20px;
     margin-top: 20px;
   }
 
@@ -380,6 +400,11 @@
     width: 16px;
     height: 16px;
     accent-color: var(--accent);
+  }
+
+  .consent {
+    color: var(--faint);
+    font-size: 13px;
   }
 
   .hint {

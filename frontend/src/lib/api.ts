@@ -85,14 +85,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 /**
  * @brief POST /v1/posts, retried safely under the same Idempotency-Key
+ *
+ * turnstile_token is the human check's one-time token, null when the site
+ * has no Turnstile site key.
  */
-export function create_post(post: New_Post, idempotency_key: string): Promise<Post> {
+export function create_post(
+  post: New_Post,
+  idempotency_key: string,
+  turnstile_token: string | null = null,
+): Promise<Post> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Idempotency-Key": `"${idempotency_key}"`,
+  };
+  if (turnstile_token) headers["Turnstile-Token"] = turnstile_token;
   return request<Post>("/v1/posts", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": `"${idempotency_key}"`,
-    },
+    headers,
     body: JSON.stringify(post),
   });
 }

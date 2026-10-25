@@ -7,16 +7,17 @@
 
 #pragma once
 
-#include <algorithm>         // for all_of, generate
-#include <catalan/manage.hh> // for Database, Post, Post_Summary, Cursor
-#include <crow.h>            // for request, response, json
-#include <cstddef>           // for size_t
-#include <cstdint>           // for int64_t
-#include <optional>          // for optional
-#include <random>            // for random_device, uniform_int_distribution
-#include <string>            // for basic_string, string
-#include <string_view>       // for basic_string_view, string_view
-#include <vector>            // for vector
+#include <algorithm>            // for all_of, generate
+#include <catalan/manage.hh>    // for Database, Post, Post_Summary, Cursor
+#include <catalan/turnstile.hh> // for Verifier
+#include <crow.h>               // for request, response, json
+#include <cstddef>              // for size_t
+#include <cstdint>              // for int64_t
+#include <optional>             // for optional
+#include <random>               // for random_device, uniform_int_distribution
+#include <string>               // for basic_string, string
+#include <string_view>          // for basic_string_view, string_view
+#include <vector>               // for vector
 
 /****************************************************************************
  * API
@@ -319,12 +320,19 @@ crow::json::wvalue to_json(orm::Post_Summary const& post);
 /**
  * @brief POST /v1/posts, createPost
  *
- * 201 with a Location header, or 400, 415, 422, 500. With an
+ * 201 with a Location header, or 400, 403, 415, 422, 500, 503. With an
  * Idempotency-Key, a retry of the same post replays the original 201 with
  * Idempotent-Replayed: true, and a different post under the same key is a
  * 422.
+ *
+ * A new post needs a Turnstile-Token header that verify passes, 403 when
+ * it's missing or fails, 503 when Cloudflare can't be reached. A replay
+ * doesn't, since the original attempt spent its token. An empty verify
+ * turns the check off.
  */
-crow::response create_post(orm::Database& db, crow::request const& req);
+crow::response create_post(orm::Database& db,
+    crow::request const& req,
+    turnstile::Verifier const& verify = {});
 
 /**
  * @brief GET /v1/posts, listPosts

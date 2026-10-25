@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { render } from "./render";
 import basel from "../../../examples/basel-problem.md?raw";
 import euler from "../../../examples/euler-identity.md?raw";
+import terms from "../content/terms.md?raw";
 
 describe("render", () => {
   it("renders Markdown", () => {
@@ -67,5 +68,12 @@ describe("render", () => {
       expect(page.querySelectorAll(".katex-error")).toHaveLength(0);
       expect(page.querySelectorAll(".katex-display").length).toBeGreaterThan(1);
     }
+  });
+
+  it("renders the terms page, with a contact wherever one is needed", () => {
+    expect(terms.split("{{contact}}").length - 1).toBeGreaterThanOrEqual(3);
+    const page = new DOMParser().parseFromString(render(terms), "text/html");
+    expect(page.querySelectorAll(".katex-error")).toHaveLength(0);
+    expect(page.querySelector("h1")?.textContent).toBe("Terms of use");
   });
 });

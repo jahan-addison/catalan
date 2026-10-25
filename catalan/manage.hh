@@ -482,6 +482,22 @@ inline Page list_posts(Storage& storage,
 }
 
 /**
+ * @brief Get the post an unexpired Idempotency-Key created, if any
+ *
+ * Checked before verifying a Turnstile token, so a retry replays the
+ * original even though its token was spent on the first attempt.
+ */
+inline std::optional<Post> get_idempotent_post(Storage& storage,
+    std::string const& key,
+    std::int64_t expired_before)
+{
+    auto const used = storage.get_optional<Idempotency_Key>(key);
+    if (not used or used->created_at < expired_before)
+        return std::nullopt;
+    return storage.get_optional<Post>(used->post_id);
+}
+
+/**
  * @brief Insert a post under an Idempotency-Key, or get the key's post
  *
  * Returns nullopt when the post was inserted, or the post the key already

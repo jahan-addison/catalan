@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { contact_email, report_link } from "./lib/contact";
   import { intercept_links, location_state, match } from "./lib/router.svelte";
   import All from "./routes/All.svelte";
   import Editor from "./routes/Editor.svelte";
   import Missing from "./routes/Missing.svelte";
   import Post from "./routes/Post.svelte";
+  import Terms from "./routes/Terms.svelte";
 
   const page = $derived(match(location_state.path, location_state.search));
 </script>
@@ -29,6 +31,8 @@
       {/key}
     {:else if page.name === "all"}
       <All />
+    {:else if page.name === "terms"}
+      <Terms />
     {:else if page.name === "post"}
       {#key page.id}
         <Post id={page.id} />
@@ -40,7 +44,11 @@
 
   <footer class="footer">
     <span>A pastebin for math and LaTeX.</span>
-    <a href="https://github.com/jahan-addison/catalan">Source</a>
+    <span class="links">
+      <a href="/terms">Terms</a>
+      {#if contact_email}<a href={report_link(contact_email)}>Report a post</a>{/if}
+      <a href="https://github.com/jahan-addison/catalan">Source</a>
+    </span>
   </footer>
 </div>
 
@@ -141,5 +149,10 @@
 
   .footer a {
     color: var(--muted);
+  }
+
+  .links {
+    display: flex;
+    gap: 20px;
   }
 </style>

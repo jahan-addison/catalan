@@ -51,6 +51,9 @@ include(${cmake-scripts_SOURCE_DIR}/tools.cmake)
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
 
+# libcurl verifies Turnstile tokens with Cloudflare, see catalan/turnstile.hh.
+find_package(CURL REQUIRED)
+
 # asio has no CMakeLists, so asio::asio is defined here before Crow's
 # Findasio.cmake creates a directory-local target this project can't see.
 cpmaddpackage(
@@ -146,7 +149,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
 target_compile_options(${PROJECT_NAME} PRIVATE ${CATALAN_WARNINGS})
 target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG>)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE sqlite_orm::sqlite_orm Crow::Crow)
+target_link_libraries(${PROJECT_NAME} PRIVATE sqlite_orm::sqlite_orm Crow::Crow
+                                              CURL::libcurl)
 
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
 

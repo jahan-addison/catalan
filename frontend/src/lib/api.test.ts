@@ -33,6 +33,15 @@ describe("create_post", () => {
     expect(path).toBe("/v1/posts");
     expect(headers["Content-Type"]).toBe("application/json");
     expect(headers["Idempotency-Key"]).toBe('"8e03978e-40d5-43e8-bc93-6894a57f9324"');
+    expect(headers["Turnstile-Token"]).toBeUndefined();
+  });
+
+  it("sends the Turnstile token when there is one", async () => {
+    const fetch = respond(201, { id: "7HcPq2mVa0Rn" });
+    vi.stubGlobal("fetch", fetch);
+    await create_post({ body: "x" }, "k".repeat(16), "token-1");
+    const [, init] = fetch.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["Turnstile-Token"]).toBe("token-1");
   });
 
   it("throws the Problem Details of a 422", async () => {

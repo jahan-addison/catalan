@@ -57,8 +57,14 @@ paths:
         replays the original `201`, with the same post and an
         `Idempotent-Replayed: true` header, instead of creating a duplicate.
         The same key with a different post is a `422`.
+
+        A new post needs a `Turnstile-Token` from Cloudflare Turnstile's
+        widget, so creating posts is for browsers, not scripts. A replay
+        doesn't need one, since its first attempt spent the token. At most 10
+        posts a minute per client IP.
       tags: [Posts]
       parameters:
+        - $ref: '#/components/parameters/TurnstileToken'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
@@ -97,6 +103,8 @@ paths:
                 $ref: '#/components/schemas/Post'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/VerificationFailed'
         '413':
           $ref: '#/components/responses/ContentTooLarge'
         '415':
@@ -107,6 +115,8 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/VerificationUnavailable'
 
     get:
       operationId: listPosts
@@ -283,6 +293,17 @@ components:
       name: If-None-Match
       in: header
       description: An `ETag` from a previous response
+      schema:
+        type: string
+
+    TurnstileToken:
+      name: Turnstile-Token
+      in: header
+      required: true
+      description: |
+        The one-time token from Cloudflare Turnstile's widget, verified with
+        Cloudflare before the post is created. Not needed for an
+        Idempotency-Key replay.
       schema:
         type: string
 
@@ -526,8 +547,31 @@ components:
               - field: parent_id
                 message: no post with id 4fQx9ZtLb2Wk
 
+    VerificationFailed:
+      description: |
+        The Turnstile token is missing, invalid, expired, or already used.
+        Complete the human check again and resend.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: /problems/verification-failed
+            title: Verification failed
+            status: 403
+            detail: Complete the human verification, then publish again.
+
+    VerificationUnavailable:
+      description: Cloudflare couldn't be reached to check the token, try again
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
     TooManyRequests:
-      description: Rate limit exceeded. With no auth, limits are per client IP.
+      description: |
+        Rate limit exceeded. With no auth, limits are per client IP: 60
+        requests a minute, of which at most 10 can create posts.
       headers:
         Retry-After:
           $ref: '#/components/headers/RetryAfter'

@@ -6,6 +6,7 @@ Catalan's API stores Markdown and LaTeX posts and gives each one a link. It's se
 * Posts are immutable - once created, a post never changes, and "editing" one creates a new post with a `parent_id`
 * Unlisted posts are left out of the listing, but anyone with the link can read them
 * Post ids are random 12-character base62 strings (`0-9`, `a-z`, `A-Z`), so an unlisted link can't be guessed
+* Creating posts is for browsers - each new post needs a human check, so reading, listing, and raw access are open to scripts but creating isn't
 
 > 📖 The full specification is [openapi.yaml](openapi.yaml)
 
@@ -17,6 +18,7 @@ Catalan's API stores Markdown and LaTeX posts and gives each one a link. It's se
 - [Posts](#posts)
 - [Listing](#listing)
 - [Caching](#caching)
+- [Human check](#human-check)
 - [Idempotency-Key](#idempotency-key)
 - [Errors](#errors)
 - [Link previews](#link-previews)
@@ -32,11 +34,12 @@ Catalan's API stores Markdown and LaTeX posts and gives each one a link. It's se
 * `GET /v1/posts/{id}/raw` - get a post's source as plain text
 * `GET /health` - `200 ok` when the database is reachable, `503` when it isn't
 
-Create a post:
+Create a post, with a token from the [human check](#human-check):
 
 ```bash
 curl -i https://api.example.com/v1/posts \
   -H 'Content-Type: application/json' \
+  -H 'Turnstile-Token: <token>' \
   -d '{ "title": "Euler'\''s identity", "author": "Euler", "body": "$$e^{i\\pi} + 1 = 0$$" }'
 
 # HTTP/1.1 201 Created
@@ -134,6 +137,19 @@ curl -i https://api.example.com/v1/posts/7HcPq2mVa0Rn -H 'If-None-Match: "7HcPq2
 
 ---
 
+## Human check
+
+Each new post needs a `Turnstile-Token` header, a one-time token from the [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/) widget in the browser. The server checks it with Cloudflare before creating the post:
+
+* No token, or one that fails, is a `403` with type `/problems/verification-failed`
+* Cloudflare unreachable is a `503`, try again in a moment
+* Tokens are single use, so a failed attempt needs a new one
+* An [Idempotency-Key](#idempotency-key) replay doesn't need a token, since its first attempt spent it
+
+Creating posts is limited to 10 a minute per IP, within the overall 60 requests a minute.
+
+---
+
 ## Idempotency-Key
 
 `POST /v1/posts` isn't idempotent: sending it twice creates two posts. If a connection drops after the server creates a post but before the `201` arrives, a client can't tell whether to retry. An `Idempotency-Key` makes the retry safe:
@@ -185,13 +201,14 @@ Errors are [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`
 * `201 Created` - a post was created, the `Location` header has its URL
 * `304 Not Modified` - the cached copy named by `If-None-Match` is current
 * `400 Bad Request` - the request can't be parsed, e.g. malformed JSON, `limit=abc`, or a malformed `Idempotency-Key`
+* `403 Forbidden` - the human check's token is missing or failed
 * `404 Not Found` - no post has this id, a malformed id is treated the same way
 * `413 Content Too Large` - the request body is over 256 KiB
 * `415 Unsupported Media Type` - the `Content-Type` isn't `application/json`
 * `422 Unprocessable Content` - valid JSON that breaks the rules, e.g. an empty `body`, a `parent_id` that doesn't exist, or a reused `Idempotency-Key`
-* `429 Too Many Requests` - over 60 requests a minute from one IP, `Retry-After` says how many seconds to wait
+* `429 Too Many Requests` - over 60 requests, or 10 new posts, a minute from one IP, `Retry-After` says how many seconds to wait
 * `500 Internal Server Error` - a failure on the server, never the request's fault
-* `503 Service Unavailable` - from `/health` only, the database is unreachable
+* `503 Service Unavailable` - from `/health`, the database is unreachable, or from creating a post, Cloudflare couldn't check the token
 
 **Note**: `413` and `429` come from the proxy as plain text, not Problem Details - go by the status code.
 

@@ -14,11 +14,20 @@
 		max_size 256KB
 	}
 
-	# 429 with Retry-After, per client IP
+	# 429 with Retry-After, per client IP: 60 requests a minute, of which at
+	# most 10 can create posts
 	rate_limit {
 		zone per_ip {
 			key {remote_host}
 			events 60
+			window 1m
+		}
+		zone posts {
+			match {
+				method POST
+			}
+			key {remote_host}
+			events 10
 			window 1m
 		}
 	}

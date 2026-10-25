@@ -26,6 +26,10 @@ services:
     build:
       context: .
       target: runtime
+    environment:
+      # Cloudflare's test secret 1x0000000000000000000000000000000AA always
+      # passes, empty turns the human check off
+      CATALAN_TURNSTILE_SECRET: ${CATALAN_TURNSTILE_SECRET:-}
     volumes:
       - data:/data
 
@@ -34,6 +38,9 @@ services:
     build:
       context: .
       target: proxy
+      args:
+        # empty uses frontend/.env.local, see .env.example
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
     depends_on:
       - catalan
     ports:

@@ -20,4 +20,4 @@ so $e^{i\pi}$ is a half turn, which sends $1$ to $-1$.
 
 > Like a Shakespearean sonnet that captures the very essence of love, or a painting that brings out the beauty of the human form that is far more than just skin deep, Euler's equation reaches down into the very depths of existence.
 >
-> - Keith Devlin
+> *- Keith Devlin*

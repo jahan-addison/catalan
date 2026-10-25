@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gdb \
     git \
+    libcurl4-openssl-dev \
     libsqlite3-dev \
     ninja-build \
     sqlite3 \
@@ -59,7 +60,7 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       "${toolchain}" ca-certificates cmake git ninja-build \
-      "libsqlite3-dev:${TARGETARCH}"; \
+      "libsqlite3-dev:${TARGETARCH}" "libcurl4-openssl-dev:${TARGETARCH}"; \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -91,9 +92,12 @@ COPY --from=builder /out/bin/catalan /catalan
 
 FROM --platform=$BUILDPLATFORM node:24.15-slim AS site-builder
 
-# Adobe Fonts kit id, optional. Without it, frontend/.env.local applies, then
-# the fallback fonts
+# Optional, frontend/.env.local applies to any left empty. Without a kit the
+# fallback fonts apply, without an email there are no report links, and
+# without a Turnstile site key there is no human check
 ARG VITE_TYPEKIT_ID=""
+ARG VITE_CONTACT_EMAIL=""
+ARG VITE_TURNSTILE_SITE_KEY=""
 
 WORKDIR /site
 COPY frontend/package.json frontend/package-lock.json ./
@@ -103,6 +107,8 @@ COPY examples/ /examples/
 # an empty build arg is still an environment variable, which would override
 # frontend/.env.local, so it's unset
 RUN if [ -z "${VITE_TYPEKIT_ID}" ]; then unset VITE_TYPEKIT_ID; fi; \
+    if [ -z "${VITE_CONTACT_EMAIL}" ]; then unset VITE_CONTACT_EMAIL; fi; \
+    if [ -z "${VITE_TURNSTILE_SITE_KEY}" ]; then unset VITE_TURNSTILE_SITE_KEY; fi; \
     npm run build
 
 # ##############################################################################
@@ -149,7 +155,10 @@ ENTRYPOINT ["python", "-m", "catalan_admin"]
 
 FROM debian:${DEBIAN_RELEASE}-slim AS runtime
 
+# ca-certificates for the HTTPS call to Cloudflare's siteverify
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libcurl4t64 \
     libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --home-dir /data catalan \

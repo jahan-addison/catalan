@@ -16,6 +16,7 @@
  *    /                 new post
  *    /?edit=<id>       new post, an edit of <id>
  *    /all              every listed post
+ *    /terms            terms of use
  *    /7HcPq2mVa0Rn     a post
  *
  ****************************************************************************/
@@ -23,6 +24,7 @@
 export type Page =
   | { name: "editor"; edit: string | null }
   | { name: "all" }
+  | { name: "terms" }
   | { name: "post"; id: string }
   | { name: "missing" };
 
@@ -34,6 +36,7 @@ const post_path = /^\/([0-9A-Za-z]{12})$/;
 export function match(path: string, search: string): Page {
   if (path === "/") return { name: "editor", edit: new URLSearchParams(search).get("edit") };
   if (path === "/all") return { name: "all" };
+  if (path === "/terms") return { name: "terms" };
   const post = post_path.exec(path);
   if (post?.[1]) return { name: "post", id: post[1] };
   return { name: "missing" };

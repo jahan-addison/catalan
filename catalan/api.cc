@@ -71,6 +71,8 @@ std::string_view problem_slug(int status)
             return "/problems/not-found";
         case 415:
             return "/problems/unsupported-media-type";
+        case 403:
+            return "/problems/verification-failed";
         case 422:
             return "/problems/validation";
         case 503:
@@ -227,6 +229,26 @@ bool same_post(orm::Post const& stored, orm::Post const& requested)
            stored.body == requested.body and
            stored.unlisted == requested.unlisted and
            stored.parent_id == requested.parent_id;
+}
+
+/**
+ * @brief The client's IP, for Turnstile
+ *
+ * Behind the proxy every request comes from Caddy, which puts the client
+ * first in X-Forwarded-For.
+ */
+std::string client_ip(crow::request const& req)
+{
+    auto const& forwarded = req.get_header_value("X-Forwarded-For");
+    if (forwarded.empty())
+        return req.remote_ip_address;
+    std::string_view first{ forwarded };
+    first = first.substr(0, first.find(','));
+    auto const start = first.find_first_not_of(' ');
+    if (start == std::string_view::npos)
+        return req.remote_ip_address;
+    first.remove_prefix(start);
+    return std::string{ first.substr(0, first.find_last_not_of(' ') + 1) };
 }
 
 /**
@@ -541,7 +563,9 @@ crow::json::wvalue to_json(orm::Post_Summary const& post)
  * Handlers
  ****************************************************************************/
 
-crow::response create_post(orm::Database& db, crow::request const& req)
+crow::response create_post(orm::Database& db,
+    crow::request const& req,
+    turnstile::Verifier const& verify)
 {
     if (not req.get_header_value("Content-Type").starts_with(k_json_type))
         return problem(415,
@@ -587,6 +611,52 @@ crow::response create_post(orm::Database& db, crow::request const& req)
     if (body.has("parent_id"))
         post.parent_id = body["parent_id"].s();
 
+    auto const expired_before = post.created_at - k_idempotency_ttl_ms;
+
+    // a retry replays without a token, its first attempt already spent one
+    if (key) {
+        std::optional<orm::Post> existing{};
+        try {
+            existing = db.with_storage([&](auto& storage) {
+                return orm::get_idempotent_post(storage, *key, expired_before);
+            });
+        } catch (std::exception const& e) {
+            return internal_error("create_post", e);
+        }
+        if (existing) {
+            if (not same_post(*existing, post))
+                return problem(422,
+                    "Idempotency-Key reused",
+                    "This Idempotency-Key was already used for a different "
+                    "post.",
+                    {},
+                    "/problems/idempotency-key-reused");
+            auto res = created(*existing);
+            res.set_header("Idempotent-Replayed", "true");
+            return res;
+        }
+    }
+
+    // outside with_storage, so a slow siteverify never holds the lock
+    if (verify) {
+        switch (
+            verify(req.get_header_value("Turnstile-Token"), client_ip(req))) {
+            case turnstile::Result::passed:
+                break;
+            case turnstile::Result::failed:
+                return problem(403,
+                    "Verification failed",
+                    "Complete the human verification, then publish again.",
+                    {},
+                    "/problems/verification-failed");
+            case turnstile::Result::unavailable:
+                return problem(503,
+                    "Verification unavailable",
+                    "Human verification couldn't be checked, try again in a "
+                    "moment.");
+        }
+    }
+
     for (int attempt = 0; attempt < k_insert_attempts; attempt++) {
         post.id = make_post_id();
 
@@ -598,10 +668,8 @@ crow::response create_post(orm::Database& db, crow::request const& req)
                         orm::insert_post(storage, post);
                         return std::nullopt;
                     }
-                    return orm::insert_post_once(storage,
-                        post,
-                        *key,
-                        post.created_at - k_idempotency_ttl_ms);
+                    return orm::insert_post_once(
+                        storage, post, *key, expired_before);
                 });
         } catch (std::system_error const& e) {
             if (orm::is_duplicate_id(e))

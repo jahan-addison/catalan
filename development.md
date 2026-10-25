@@ -105,7 +105,37 @@ npm run build                                 # dist/
 npm run screenshots                           # Playwright, every page at desktop and phone widths
 ```
 
-Posts render with markdown-it and KaTeX, then DOMPurify, and are set in KaTeX's own fonts so prose and math match. The UI uses an Adobe Fonts kit - Neue Haas Grotesk Display and Text, and IBM Plex Mono - set with `VITE_TYPEKIT_ID` in `frontend/.env.local`. Without it, the system fallbacks apply.
+Posts render with markdown-it and KaTeX, then DOMPurify, and are set in KaTeX's own fonts so prose and math match.
+
+Three build settings, in `frontend/.env.local` or as Docker `--build-arg`s. A `--build-arg` wins when both are set. Start from the template:
+
+```bash
+cp frontend/.env.example frontend/.env.local
+```
+
+
+* `VITE_TYPEKIT_ID` - the Adobe Fonts kit for the UI, Neue Haas Grotesk Display and Text, and IBM Plex Mono. Without it, the system fallbacks apply
+* `VITE_CONTACT_EMAIL` - where reports go. It adds "Report a post" to the footer and "Report" to each post, opening an email with the post's id and link filled in, and it's the contact on the terms page. Without it, there are no report links
+* `VITE_TURNSTILE_SITE_KEY` - the public half of the human check, see [Human check](#human-check)
+
+The terms page is `frontend/src/content/terms.md`, with `{{contact}}` replaced by `VITE_CONTACT_EMAIL`.
+
+### Human check
+
+New posts need a [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/) token. Create a widget in the Cloudflare dashboard with your site's domain and `localhost` as hostnames. It gives two keys:
+
+* the **site key**, public, built into the frontend as `VITE_TURNSTILE_SITE_KEY`
+* the **secret key**, for the server only, as `CATALAN_TURNSTILE_SECRET` on the `catalan` container
+
+Without the secret, the server logs a warning and skips the check, which is fine for development. For local testing with the check on, Cloudflare's test keys always pass:
+
+```bash
+VITE_TURNSTILE_SITE_KEY=1x00000000000000000000AA \
+CATALAN_TURNSTILE_SECRET=1x0000000000000000000000000000000AA \
+  docker compose --profile prod up -d --build proxy
+```
+
+To see the `403`, use `2x0000000000000000000000000000000AA` as the secret, which always fails.
 
 ---
 
@@ -145,11 +175,12 @@ cmake --build build-arm64 -j
 
 ## Configuration
 
-Production is two containers on a private Docker network. `catalan` is the API and SQLite database, never published to the host. `catalan-proxy` is Caddy with the built frontend, the only container on ports 80 and 443, configured in [deploy/Caddyfile](deploy/Caddyfile). It handles HTTPS, rate limiting (60 requests a minute per IP), request size limits (256 KiB), and compression.
+Production is two containers on a private Docker network. `catalan` is the API and SQLite database, never published to the host. `catalan-proxy` is Caddy with the built frontend, the only container on ports 80 and 443, configured in [deploy/Caddyfile](deploy/Caddyfile). It handles HTTPS, rate limiting (60 requests and 10 new posts a minute per IP), request size limits (256 KiB), and compression.
 
 * `CATALAN_PORT` (catalan) - HTTP listen port, `18080` by default
 * `CATALAN_DB` (catalan) - SQLite database path, `catalan.db` by default, i.e. `/data/catalan.db` in the volume
 * `CATALAN_SITE_ORIGIN` (catalan) - the site's origin for link previews, e.g. `https://example.com`
+* `CATALAN_TURNSTILE_SECRET` (catalan) - the Turnstile secret key. Unset, new posts aren't checked
 * `CATALAN_DOMAIN` (proxy) - the API's domain. Unset, the proxy serves it on plain HTTP `:80`
 * `CATALAN_SITE_DOMAIN` (proxy) - the site's domain. Unset, the proxy serves it on plain HTTP `:8080`
 * `CATALAN_UPSTREAM` (proxy) - API address, `catalan:18080` by default
@@ -168,7 +199,7 @@ docker save catalan:$TAG catalan-proxy:$TAG | gzip | ssh user@server 'gunzip | d
 
 ## Removing a post
 
-The API can't delete posts. For abuse or illegal content, the operator CLI in `admin/` removes posts directly from the database, alongside the running server:
+The API can't delete posts. Reports arrive by email through the site's report links, with the post's id in the subject. For abuse or illegal content, the operator CLI in `admin/` removes posts directly from the database, alongside the running server:
 
 ```bash
 docker buildx build --platform linux/amd64 --target admin \

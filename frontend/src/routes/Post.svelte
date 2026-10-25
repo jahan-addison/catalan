@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Rendered from "../components/Rendered.svelte";
   import { get_post, type Post } from "../lib/api";
+  import { contact_email, report_link } from "../lib/contact";
   import { full_time, relative_time } from "../lib/time";
   import Missing from "./Missing.svelte";
 
@@ -60,6 +61,9 @@
       <button class="button primary" onclick={copy_link}>{copied ? "Copied" : "Copy link"}</button>
       <a class="button" href="/?edit={post.id}">Edit as new</a>
       <a class="button" href="/v1/posts/{post.id}/raw" target="_blank" rel="noopener">Raw</a>
+      {#if contact_email}
+        <a class="report" href={report_link(contact_email, post.id, window.location.origin)}>Report</a>
+      {/if}
     </div>
   </article>
 {/if}
@@ -123,7 +127,18 @@
   .actions {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 12px;
     margin-top: 20px;
+  }
+
+  .report {
+    margin-left: auto;
+    color: var(--faint);
+    font-size: 13px;
+  }
+
+  .report:hover {
+    color: var(--muted);
   }
 </style>

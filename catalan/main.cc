@@ -5,13 +5,14 @@
  * See the LICENSE file in the project root for the full text.
  ****************************************************************************/
 
-#include <catalan/api.hh>    // for create_post, list_posts, get_post, ...
-#include <catalan/manage.hh> // for Database
-#include <catalan/seed.hh>   // for seed_examples
-#include <crow.h>            // for SimpleApp, CROW_ROUTE, CROW_LOG_CRITICAL
-#include <cstdlib>           // for getenv
-#include <exception>         // for exception
-#include <string>            // for basic_string, string, stoi
+#include <catalan/api.hh>       // for create_post, list_posts, get_post, ...
+#include <catalan/manage.hh>    // for Database
+#include <catalan/seed.hh>      // for seed_examples
+#include <catalan/turnstile.hh> // for initialize, make_verifier, Verifier
+#include <crow.h>               // for SimpleApp, CROW_ROUTE, CROW_LOG_CRITICAL
+#include <cstdlib>              // for getenv
+#include <exception>            // for exception
+#include <string>               // for basic_string, string, stoi
 
 namespace {
 
@@ -44,9 +45,19 @@ int main()
 
         // routes only forward to api.hh, which the tests can reach
 
+        catalan::turnstile::initialize();
+        catalan::turnstile::Verifier verify{};
+        if (auto const secret = env_or("CATALAN_TURNSTILE_SECRET", "");
+            secret.empty()) {
+            CROW_LOG_WARNING << "CATALAN_TURNSTILE_SECRET isn't set, new "
+                                "posts aren't checked for a human";
+        } else {
+            verify = catalan::turnstile::make_verifier(secret);
+        }
+
         CROW_ROUTE(app, "/v1/posts")
-            .methods("POST"_method)([&db](crow::request const& req) {
-                return catalan::api::create_post(db, req);
+            .methods("POST"_method)([&db, &verify](crow::request const& req) {
+                return catalan::api::create_post(db, req, verify);
             });
 
         CROW_ROUTE(app, "/v1/posts")

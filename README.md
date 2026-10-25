@@ -46,6 +46,8 @@ docker buildx build --platform linux/amd64 \
 
 docker buildx build --platform linux/amd64 --target proxy \
   --build-arg VITE_TYPEKIT_ID=<your kit id> \
+  --build-arg VITE_CONTACT_EMAIL=<where reports go> \
+  --build-arg VITE_TURNSTILE_SITE_KEY=<turnstile site key> \
   -t "$IMAGE-proxy:$TAG" --push .
 ```
 
@@ -61,6 +63,7 @@ docker run -d --name catalan \
   --network catalan \
   --restart unless-stopped \
   -e CATALAN_SITE_ORIGIN="https://$CATALAN_SITE_DOMAIN" \
+  -e CATALAN_TURNSTILE_SECRET=<turnstile secret key> \
   -v catalan-data:/data \
   "$IMAGE:$TAG"
 

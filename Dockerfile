@@ -86,7 +86,28 @@ FROM scratch AS artifact
 COPY --from=builder /out/bin/catalan /catalan
 
 # ##############################################################################
-# proxy (--target proxy, Caddy with rate limiting, see deploy/Caddyfile)
+# site-builder (the frontend in frontend/, static files for every platform)
+# ##############################################################################
+
+FROM --platform=$BUILDPLATFORM node:24.15-slim AS site-builder
+
+# Adobe Fonts kit id, optional. Without it, frontend/.env.local applies, then
+# the fallback fonts
+ARG VITE_TYPEKIT_ID=""
+
+WORKDIR /site
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+COPY examples/ /examples/
+# an empty build arg is still an environment variable, which would override
+# frontend/.env.local, so it's unset
+RUN if [ -z "${VITE_TYPEKIT_ID}" ]; then unset VITE_TYPEKIT_ID; fi; \
+    npm run build
+
+# ##############################################################################
+# proxy (--target proxy, Caddy with rate limiting and the site, see
+# deploy/Caddyfile)
 # ##############################################################################
 
 FROM --platform=$BUILDPLATFORM caddy:2.11-builder AS proxy-builder
@@ -101,6 +122,7 @@ FROM caddy:2.11 AS proxy
 
 COPY --from=proxy-builder /usr/bin/caddy /usr/bin/caddy
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=site-builder /site/dist /srv/site
 
 # ##############################################################################
 # admin (--target admin, the operator CLI in admin/)

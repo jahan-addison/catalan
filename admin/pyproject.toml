@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "catalan-admin"
-version = "0.1.0"
+version = "1.0.0"
 description = "Operator CLI for the catalan database"
 authors = ["Jahan Addison"]
 license = "Apache-2.0"

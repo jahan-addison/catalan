@@ -1,13 +1,18 @@
-### A stateless markdown and latex pastebin for math 📗
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-on-dark.png">
+    <img src="docs/images/logo-on-light.png" width="340" alt="catalan">
+  </picture>
+</div>
 
-Catalan is a pastebin for math. Write Markdown and LaTeX, then share the link. It's my own version of [mathb](https://github.com/susam/mathb), the now discontinued math pastebin.
+Catalan is a stateless pastebin for math - write Markdown and LaTeX, then share the link. It's my own version of [mathb](https://github.com/susam/mathb), the now discontinued math pastebin.
 
 * C++20 API with Crow and SQLite
 * Svelte and TypeScript, built with Vite
 * Math by KaTeX, typeset in its own Computer Modern fonts
 * Caddy for HTTPS, all in Docker
 
-> 📖 [API reference](api.md) · [Development](development.md)
+> 📖 [API reference](api.md) - [Development](development.md)
 
 <div align="center">
   <img src="docs/images/editor.jpg" width="800" alt="Writing a post, with a live preview">

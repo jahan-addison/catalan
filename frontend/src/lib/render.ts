@@ -48,7 +48,8 @@ const markdown = new MarkdownIt({
 }).use(texmath, {
   engine: katex,
   delimiters: "dollars",
-  katexOptions: katex_options,
+  // texmath sets displayMode on the options it's given, so it gets a copy
+  katexOptions: { ...katex_options },
 });
 
 const sanitize_options = {
@@ -91,7 +92,7 @@ export function render_title(source: string): string {
   let last = 0;
   for (const match of source.matchAll(inline_math)) {
     html += markdown.utils.escapeHtml(source.slice(last, match.index));
-    html += katex.renderToString(match[1] ?? "", katex_options);
+    html += katex.renderToString(match[1] ?? "", { ...katex_options, displayMode: false });
     last = match.index + match[0].length;
   }
   html += markdown.utils.escapeHtml(source.slice(last));

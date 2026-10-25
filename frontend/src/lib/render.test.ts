@@ -90,6 +90,11 @@ describe("render_title", () => {
     expect(html).toBe("**bold** [link](https://example.com) &lt;b&gt;x&lt;/b&gt;");
   });
 
+  it("stays inline after a post with display math", () => {
+    render("$$\\sum_{n=1}^\\infty \\frac{1}{n^2}$$");
+    expect(render_title("$n^3 - n$ Proof")).not.toContain("katex-display");
+  });
+
   it("leaves prices as text", () => {
     expect(render_title("$5 and $10")).toBe("$5 and $10");
   });

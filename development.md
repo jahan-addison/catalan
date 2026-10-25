@@ -125,7 +125,11 @@ The terms page is `frontend/src/content/terms.md`, with `{{contact}}` replaced b
 New posts need a [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/) token. Create a widget in the Cloudflare dashboard with your site's domain and `localhost` as hostnames. It gives two keys:
 
 * the **site key**, public, built into the frontend as `VITE_TURNSTILE_SITE_KEY`
-* the **secret key**, for the server only, as `CATALAN_TURNSTILE_SECRET` on the `catalan` container
+* the **secret key**, for the server only, as `CATALAN_TURNSTILE_SECRET` on the `catalan` container. For the compose stack, put it in a `.env` at the project root, from the template:
+
+```bash
+cp .env.example .env
+```
 
 Without the secret, the server logs a warning and skips the check, which is fine for development. For local testing with the check on, Cloudflare's test keys always pass:
 

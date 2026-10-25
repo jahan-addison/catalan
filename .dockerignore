@@ -12,3 +12,4 @@ frontend/screenshots
 *.db
 decisions.md
 admin/.venv
+.env

@@ -126,6 +126,8 @@ inline constexpr std::size_t k_body_max_length = 65536;
 inline constexpr std::size_t k_title_max_length = 200;
 inline constexpr std::size_t k_author_max_length = 64;
 
+inline constexpr std::size_t k_excerpt_length = 100;
+
 inline constexpr std::size_t k_list_limit_default = 20;
 inline constexpr std::size_t k_list_limit_max = 100;
 
@@ -170,6 +172,49 @@ std::int64_t now_ms();
  *    to_iso8601(1761275700123); // "2025-10-24T03:15:00.123Z"
  */
 std::string to_iso8601(std::int64_t milliseconds);
+
+/**
+ * @brief The excerpt of a post body for listings and link previews
+ *
+ * Each run of whitespace, newlines included, becomes one space, and the
+ * result is cut at k_excerpt_length characters, never inside a UTF-8
+ * character. An ellipsis marks a cut, either here or because body_length is
+ * longer than body_prefix.
+ *
+ *  Example:
+ *
+ *    make_excerpt("# Euler\n\n$$e^{i\\pi} + 1 = 0$$", 29);
+ *    // "# Euler $$e^{i\\pi} + 1 = 0$$"
+ */
+std::string make_excerpt(std::string_view body_prefix,
+    std::int64_t body_length);
+
+/**
+ * @brief Escape text for an HTML attribute or element
+ *
+ *  Example:
+ *
+ *    html_escape("<b>\"x\" & 'y'</b>");
+ *    // "&lt;b&gt;&quot;x&quot; &amp; &#39;y&#39;&lt;/b&gt;"
+ */
+std::string html_escape(std::string_view text);
+
+/**
+ * @brief The <title> and Open Graph tags for a post, or catalan's defaults
+ *
+ * Link previews in chat apps read these from the HTML without running
+ * JavaScript. Every value is HTML-escaped, since titles and bodies come from
+ * anyone. An unlisted post gets robots noindex.
+ *
+ *  Example:
+ *
+ *    <title>Euler's identity · catalan</title>
+ *    <meta property="og:title" content="Euler&#39;s identity">
+ *    <meta property="og:description" content="by Euler · $$e^{i\pi}...">
+ *    <meta property="og:url" content="https://catalan.ly/7HcPq2mVa0Rn">
+ */
+std::string render_meta(std::optional<orm::Post> const& post,
+    std::string_view site_origin);
 
 /**
  * @brief Encode a listing position as the opaque next_cursor string
@@ -305,6 +350,17 @@ crow::response get_post(orm::Database& db,
 crow::response get_post_raw(orm::Database& db,
     crow::request const& req,
     std::string const& id);
+
+/**
+ * @brief GET /meta/{id}, getPostMeta
+ *
+ * The meta tags for the site's HTML, filled in by the proxy's templates for
+ * link previews. Always 200: an unknown id or a database failure gets the
+ * default tags, since an error status would fail the whole page.
+ */
+crow::response get_post_meta(orm::Database& db,
+    std::string const& id,
+    std::string_view site_origin);
 
 /**
  * @brief GET /health, getHealth

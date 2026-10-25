@@ -263,6 +263,122 @@ std::string to_iso8601(std::int64_t milliseconds)
     return std::format("{:%FT%T}Z", time);
 }
 
+std::string make_excerpt(std::string_view body_prefix, std::int64_t body_length)
+{
+    auto const is_space = [](char c) {
+        return c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == '\f' or
+               c == '\v';
+    };
+
+    std::string excerpt{};
+    std::size_t characters = 0;
+    bool cut =
+        static_cast<std::int64_t>(utf8_length(body_prefix)) < body_length;
+    bool pending_space = false;
+
+    for (std::size_t i = 0; i < body_prefix.size(); i++) {
+        char const c = body_prefix[i];
+        if (is_space(c)) {
+            pending_space = not excerpt.empty();
+            continue;
+        }
+
+        // a character starts at any byte that isn't a continuation byte
+        bool const starts_character =
+            (static_cast<unsigned char>(c) & 0xC0) != 0x80;
+        if (starts_character) {
+            if (characters + (pending_space ? 1 : 0) >= k_excerpt_length) {
+                cut = true;
+                break;
+            }
+            if (pending_space) {
+                excerpt += ' ';
+                characters++;
+                pending_space = false;
+            }
+            characters++;
+        }
+        excerpt += c;
+    }
+
+    if (cut)
+        excerpt += "…";
+    return excerpt;
+}
+
+std::string html_escape(std::string_view text)
+{
+    std::string escaped{};
+    escaped.reserve(text.size());
+    for (char const c : text) {
+        switch (c) {
+            case '&':
+                escaped += "&amp;";
+                break;
+            case '<':
+                escaped += "&lt;";
+                break;
+            case '>':
+                escaped += "&gt;";
+                break;
+            case '"':
+                escaped += "&quot;";
+                break;
+            case '\'':
+                escaped += "&#39;";
+                break;
+            default:
+                escaped += c;
+        }
+    }
+    return escaped;
+}
+
+std::string render_meta(std::optional<orm::Post> const& post,
+    std::string_view site_origin)
+{
+    auto const meta = [](std::string_view attribute,
+                          std::string_view name,
+                          std::string_view content) {
+        return std::format(R"(<meta {}="{}" content="{}">)",
+            attribute,
+            name,
+            html_escape(content));
+    };
+
+    if (not post) {
+        return std::format("<title>catalan</title>\n{}\n{}\n{}\n{}\n{}\n{}",
+            meta("name", "description", "A pastebin for math and LaTeX"),
+            meta("property", "og:title", "catalan"),
+            meta("property", "og:description", "A pastebin for math and LaTeX"),
+            meta("property", "og:type", "website"),
+            meta("property", "og:site_name", "catalan"),
+            meta("name", "twitter:card", "summary"));
+    }
+
+    auto const title = post->title.value_or("Untitled post");
+    auto description = make_excerpt(
+        post->body, static_cast<std::int64_t>(utf8_length(post->body)));
+    if (post->author)
+        description = "by " + *post->author + " · " + description;
+
+    auto tags = std::format(
+        "<title>{} · catalan</title>\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        html_escape(title),
+        meta("name", "description", description),
+        meta("property", "og:title", title),
+        meta("property", "og:description", description),
+        meta("property", "og:type", "article"),
+        meta("property", "og:url", std::string{ site_origin } + "/" + post->id),
+        meta("property", "og:site_name", "catalan"),
+        meta(
+            "property", "article:published_time", to_iso8601(post->created_at)),
+        meta("name", "twitter:card", "summary"));
+    if (post->unlisted)
+        tags += "\n" + meta("name", "robots", "noindex");
+    return tags;
+}
+
 std::string encode_cursor(orm::Cursor const& cursor)
 {
     auto const plain = std::to_string(cursor.created_at) + "." + cursor.id;
@@ -416,6 +532,7 @@ crow::json::wvalue to_json(orm::Post_Summary const& post)
     set_nullable(json, "title", post.title);
     set_nullable(json, "author", post.author);
     set_nullable(json, "parent_id", post.parent_id);
+    json["excerpt"] = make_excerpt(post.body_prefix, post.body_length);
     json["created_at"] = to_iso8601(post.created_at);
     return json;
 }
@@ -599,6 +716,25 @@ crow::response get_post_raw(orm::Database& db,
         res.set_header("Content-Type", "text/plain; charset=utf-8");
         return res;
     });
+}
+
+crow::response get_post_meta(orm::Database& db,
+    std::string const& id,
+    std::string_view site_origin)
+{
+    std::optional<orm::Post> post{};
+    if (is_post_id(id)) {
+        try {
+            post = db.with_storage(
+                [&](auto& storage) { return orm::get_post(storage, id); });
+        } catch (std::exception const& e) {
+            CROW_LOG_ERROR << "get_post_meta: " << e.what();
+        }
+    }
+
+    crow::response res{ 200, render_meta(post, site_origin) };
+    res.set_header("Content-Type", "text/html; charset=utf-8");
+    return res;
 }
 
 crow::response get_health(orm::Database& db)

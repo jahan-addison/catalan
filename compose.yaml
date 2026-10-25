@@ -18,7 +18,8 @@ services:
     security_opt:
       - seccomp:unconfined
 
-  # Production smoke test, mirrors the deploy:
+  # Production smoke test, mirrors the deploy. The API is on APP_PORT, the
+  # site on SITE_PORT:
   # docker compose --profile prod up -d --build proxy
   catalan:
     profiles: ["prod"]
@@ -37,6 +38,7 @@ services:
       - catalan
     ports:
       - "${APP_PORT:-18081}:80"
+      - "${SITE_PORT:-18082}:8080"
     volumes:
       - caddy-data:/data
 

@@ -65,10 +65,19 @@ struct Post
 };
 
 /**
- * @brief A listing row, a Post without body or unlisted
+ * @brief Characters of body read for a listing row
  *
- * unlisted is always false in a listing, and leaving out body keeps a page
- * small no matter how long its posts are.
+ * Enough to build a 100 character excerpt after collapsing whitespace, so
+ * a listing never reads a whole body.
+ */
+inline constexpr int k_body_prefix_length = 512;
+
+/**
+ * @brief A listing row, a Post with the start of its body
+ *
+ * unlisted is always false in a listing. body_prefix is at most
+ * k_body_prefix_length characters, and body_length is the whole body's
+ * length in characters, so api.hh can tell whether the excerpt is cut short.
  */
 struct Post_Summary
 {
@@ -77,6 +86,8 @@ struct Post_Summary
     std::optional<std::string> parent_id{};
     std::optional<std::string> title{};
     std::optional<std::string> author{};
+    std::string body_prefix{};
+    std::int64_t body_length = 0;
 };
 
 /**
@@ -298,11 +309,17 @@ class Database
         storage_.open_forever();
         storage_.busy_timeout(5000);
         storage_.pragma.journal_mode(sqlite_orm::journal_mode::WAL);
+        new_ = storage_.pragma.user_version() == 0;
         migrate(storage_);
     }
 
     Database(Database const&) = delete;
     Database& operator=(Database const&) = delete;
+
+    /**
+     * @brief Whether opening this database created it, see seed.hh
+     */
+    bool is_new() const { return new_; }
 
     /**
      * @brief Run fn(storage) while holding the lock and return its result
@@ -319,6 +336,7 @@ class Database
   private:
     Storage storage_;
     std::mutex mutex_{};
+    bool new_ = false;
 };
 
 /****************************************************************************
@@ -369,7 +387,8 @@ inline std::optional<Post> get_post(Storage& storage, std::string const& id)
 /**
  * @brief Get one page of listed posts, after a cursor
  *
- * Fetch limit + 1 rows, if the extra row comes back there's another page.
+ * Reads at most k_body_prefix_length characters of each body. Fetch
+ * limit + 1 rows, if the extra row comes back there's another page.
  * Drop it, and next is the last kept row's (created_at, id).
  *
  *  Example - order desc, after (t, i):
@@ -397,7 +416,9 @@ inline Page list_posts(Storage& storage,
                                   &Post::created_at,
                                   &Post::parent_id,
                                   &Post::title,
-                                  &Post::author),
+                                  &Post::author,
+                                  substr(&Post::body, 1, k_body_prefix_length),
+                                  length(&Post::body)),
             where(condition),
             multi_order_by(first, second),
             sqlite_orm::limit(fetch));
@@ -436,12 +457,16 @@ inline Page list_posts(Storage& storage,
                 auto& created_at,
                 auto& parent_id,
                 auto& title,
-                auto& author) {
+                auto& author,
+                auto& body_prefix,
+                auto& body_length) {
                 page.posts.push_back(Post_Summary{ std::move(id),
                     created_at,
                     std::move(parent_id),
                     std::move(title),
-                    std::move(author) });
+                    std::move(author),
+                    std::move(body_prefix),
+                    body_length });
             },
             row);
     }

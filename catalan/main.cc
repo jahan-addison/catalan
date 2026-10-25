@@ -7,6 +7,7 @@
 
 #include <catalan/api.hh>    // for create_post, list_posts, get_post, ...
 #include <catalan/manage.hh> // for Database
+#include <catalan/seed.hh>   // for seed_examples
 #include <crow.h>            // for SimpleApp, CROW_ROUTE, CROW_LOG_CRITICAL
 #include <cstdlib>           // for getenv
 #include <exception>         // for exception
@@ -34,6 +35,12 @@ int main()
     // doesn't throw on a port already in use, it logs that itself
     try {
         catalan::orm::Database db{ env_or("CATALAN_DB", "catalan.db") };
+        if (db.is_new()) {
+            db.with_storage([](auto& storage) {
+                catalan::orm::seed_examples(storage, catalan::api::now_ms());
+            });
+            CROW_LOG_INFO << "new database, seeded the example posts";
+        }
 
         // routes only forward to api.hh, which the tests can reach
 
@@ -58,6 +65,14 @@ int main()
                 [&db](crow::request const& req, std::string const& id) {
                     return catalan::api::get_post_raw(db, req, id);
                 });
+
+        auto const site_origin =
+            env_or("CATALAN_SITE_ORIGIN", "http://localhost:18082");
+
+        CROW_ROUTE(app, "/meta/<string>")
+            .methods("GET"_method)([&db, &site_origin](std::string const& id) {
+                return catalan::api::get_post_meta(db, id, site_origin);
+            });
 
         CROW_ROUTE(app, "/health")(
             [&db] { return catalan::api::get_health(db); });

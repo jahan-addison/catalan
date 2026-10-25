@@ -12,6 +12,7 @@
 #include <catalan/manage.hh> // for Database, Cursor
 #include <crow.h>            // for request, response, json
 #include <cstddef>           // for size_t
+#include <cstdint>           // for int64_t
 #include <string>            // for basic_string, string
 #include <string_view>       // for string_view
 #include <unordered_set>     // for unordered_set
@@ -89,6 +90,92 @@ TEST_CASE("to_iso8601")
     CHECK_EQ(catalan::api::to_iso8601(1'761'275'700'123),
         "2025-10-24T03:15:00.123Z");
     CHECK_EQ(catalan::api::to_iso8601(0), "1970-01-01T00:00:00.000Z");
+}
+
+TEST_CASE("make_excerpt")
+{
+    using catalan::api::make_excerpt;
+
+    CHECK_EQ(make_excerpt("short", 5), "short");
+    std::string const spaced = "  # Title\n\n  body\ttext  ";
+    CHECK_EQ(make_excerpt(spaced, static_cast<std::int64_t>(spaced.size())),
+        "# Title body text");
+    CHECK_EQ(make_excerpt("", 0), "");
+
+    // exactly 100 characters is not cut, 101 is
+    CHECK_EQ(make_excerpt(std::string(100, 'a'), 100), std::string(100, 'a'));
+    CHECK_EQ(
+        make_excerpt(std::string(101, 'a'), 101), std::string(100, 'a') + "…");
+
+    // a 3-byte character counts once and is never split
+    std::string sums{};
+    for (int i = 0; i < 120; i++)
+        sums += "∑";
+    auto const excerpt = make_excerpt(sums, 120);
+    CHECK_EQ(excerpt.size(), 100 * 3 + std::string{ "…" }.size());
+
+    // a prefix shorter than the body is cut even when it fits
+    CHECK_EQ(
+        make_excerpt("start of a long body", 5000), "start of a long body…");
+}
+
+TEST_CASE("html_escape")
+{
+    CHECK_EQ(catalan::api::html_escape(R"(<b>"x" & 'y'</b>)"),
+        "&lt;b&gt;&quot;x&quot; &amp; &#39;y&#39;&lt;/b&gt;");
+    CHECK_EQ(catalan::api::html_escape("$$e^{i\\pi}$$"), "$$e^{i\\pi}$$");
+}
+
+TEST_CASE("render_meta")
+{
+    SUBCASE("defaults without a post")
+    {
+        auto const meta =
+            catalan::api::render_meta(std::nullopt, "https://catalan.ly");
+        CHECK(meta.find("<title>catalan</title>") != std::string::npos);
+        CHECK(meta.find("og:url") == std::string::npos);
+    }
+
+    SUBCASE("a post's title, author, excerpt, and url")
+    {
+        catalan::orm::Post post{};
+        post.id = "7HcPq2mVa0Rn";
+        post.title = "Euler's identity";
+        post.author = "Euler";
+        post.body = "$$e^{i\\pi} + 1 = 0$$";
+        auto const meta = catalan::api::render_meta(post, "https://catalan.ly");
+        CHECK(meta.find("<title>Euler&#39;s identity · catalan</title>") !=
+              std::string::npos);
+        CHECK(meta.find(R"(content="by Euler · $$e^{i\pi} + 1 = 0$$")") !=
+              std::string::npos);
+        CHECK(meta.find(R"(content="https://catalan.ly/7HcPq2mVa0Rn")") !=
+              std::string::npos);
+        CHECK(meta.find("noindex") == std::string::npos);
+    }
+
+    SUBCASE("markup in a post can't escape its attribute")
+    {
+        catalan::orm::Post post{};
+        post.id = "7HcPq2mVa0Rn";
+        post.title = R"("><script>alert(1)</script>)";
+        post.body = R"(</title><script>alert(2)</script>)";
+        auto const meta = catalan::api::render_meta(post, "https://catalan.ly");
+        CHECK(meta.find("<script>") == std::string::npos);
+        CHECK(meta.find("&lt;script&gt;") != std::string::npos);
+    }
+
+    SUBCASE("unlisted posts aren't indexed")
+    {
+        catalan::orm::Post post{};
+        post.id = "7HcPq2mVa0Rn";
+        post.body = "x";
+        post.unlisted = true;
+        auto const meta = catalan::api::render_meta(post, "https://catalan.ly");
+        CHECK(meta.find(R"(<meta name="robots" content="noindex">)") !=
+              std::string::npos);
+        CHECK(meta.find("<title>Untitled post · catalan</title>") !=
+              std::string::npos);
+    }
 }
 
 TEST_CASE("encode_cursor and decode_cursor")
@@ -405,6 +492,28 @@ TEST_CASE("list_posts handler")
                 catalan::api::list_posts(db, make_query(std::string{ query }))
                     .code,
                 400);
+    }
+}
+
+TEST_CASE("get_post_meta")
+{
+    Temp_Database_Path temp{};
+    catalan::orm::Database db{ temp.string() };
+    auto const id = create(db, R"({ "body": "x", "title": "Hello" })");
+
+    auto known = catalan::api::get_post_meta(db, id, "https://catalan.ly");
+    CHECK_EQ(known.code, 200);
+    CHECK_EQ(
+        known.get_header_value("Content-Type"), "text/html; charset=utf-8");
+    CHECK(
+        known.body.find("<title>Hello · catalan</title>") != std::string::npos);
+
+    for (auto const& missing :
+        { std::string{ "000000000000" }, std::string{ "../x" } }) {
+        auto res =
+            catalan::api::get_post_meta(db, missing, "https://catalan.ly");
+        CHECK_EQ(res.code, 200);
+        CHECK(res.body.find("<title>catalan</title>") != std::string::npos);
     }
 }
 

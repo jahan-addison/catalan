@@ -1,0 +1,298 @@
+/*****************************************************************************
+ * Copyright (c) 2026 Jahan Addison
+ * License: Apache 2.0
+ *
+ * See the LICENSE file in the project root for the full text.
+ ****************************************************************************/
+
+/****************************************************************************
+ * Theme
+ *
+ * Dark, with the purple in the background glow and the accents, never behind
+ * the text. Post content is set in KaTeX's own Computer Modern faces, so
+ * prose and math read as one typeset page. The UI around it uses the Adobe
+ * Fonts kit, with system fallbacks when the kit isn't loaded.
+ *
+ * Contrast on --bg: --text 16.3:1, --muted 9.0:1, --faint 5.4:1, --accent-soft
+ * 7.5:1. White on the primary button 5.4:1 or better.
+ ****************************************************************************/
+
+:root {
+  --bg: #0b0814;
+  --bg-raised: #120b20;
+  --glow: 124 58 237;
+
+  --text: #ece7f5;
+  --muted: #b3aac8;
+  --faint: #8a80a3;
+
+  --accent: #a855f7;
+  --accent-strong: #9333ea;
+  --accent-deep: #7e22ce;
+  --accent-soft: #c084fc;
+  --danger: #fb7185;
+
+  --surface: rgb(255 255 255 / 3.5%);
+  --surface-strong: rgb(255 255 255 / 6%);
+  --border: rgb(192 132 252 / 22%);
+  --border-strong: rgb(192 132 252 / 45%);
+
+  --font-display: "neue-haas-grotesk-display", "Neue Haas Grotesk Display Pro",
+    system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-ui: "neue-haas-grotesk-text", "Neue Haas Grotesk Text Pro", system-ui,
+    -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "ibm-plex-mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo,
+    Consolas, monospace;
+  --font-post: KaTeX_Main, "Latin Modern Roman", "Times New Roman", serif;
+
+  --radius: 14px;
+  --page: 1120px;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -8%, rgb(var(--glow) / 38%), transparent 65%),
+    radial-gradient(ellipse 45% 35% at 92% 18%, rgb(192 38 211 / 12%), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 4% 60%, rgb(var(--glow) / 10%), transparent 70%),
+    linear-gradient(180deg, var(--bg-raised), var(--bg) 60%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent-soft);
+  text-decoration-color: rgb(192 132 252 / 40%);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  text-decoration-color: currentColor;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+/* controls */
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.input,
+.editor-input {
+  width: 100%;
+  color: var(--text);
+  background: rgb(8 5 16 / 55%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition:
+    border-color 120ms,
+    box-shadow 120ms;
+}
+
+.input {
+  padding: 11px 14px;
+  font: inherit;
+}
+
+.input::placeholder,
+.editor-input::placeholder {
+  color: var(--faint);
+}
+
+.input:focus,
+.editor-input:focus {
+  outline: none;
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 4px rgb(var(--glow) / 22%);
+}
+
+.field-error {
+  margin: 6px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 120ms,
+    border-color 120ms,
+    box-shadow 120ms;
+}
+
+.button:hover {
+  background: var(--surface-strong);
+  border-color: var(--border-strong);
+}
+
+.button.primary {
+  color: #fff;
+  background: linear-gradient(180deg, var(--accent-strong), var(--accent-deep));
+  border-color: rgb(233 213 255 / 25%);
+  box-shadow:
+    0 0 0 1px rgb(var(--glow) / 40%),
+    0 8px 24px -8px rgb(var(--glow) / 70%);
+}
+
+.button.primary:hover {
+  box-shadow:
+    0 0 0 1px rgb(var(--glow) / 60%),
+    0 10px 30px -6px rgb(var(--glow) / 85%);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%);
+}
+
+/* rendered posts */
+
+.prose {
+  font-family: var(--font-post);
+  font-size: 1.22rem;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  margin: 1.4em 0 0.5em;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.prose h1 {
+  font-size: 1.7em;
+}
+
+.prose h2 {
+  font-size: 1.4em;
+}
+
+.prose h3 {
+  font-size: 1.2em;
+}
+
+.prose p,
+.prose ul,
+.prose ol,
+.prose blockquote,
+.prose pre,
+.prose table {
+  margin: 0 0 1em;
+}
+
+.prose blockquote {
+  padding-left: 1em;
+  color: var(--muted);
+  border-left: 3px solid var(--border-strong);
+}
+
+.prose code {
+  padding: 0.1em 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  background: var(--surface-strong);
+  border-radius: 6px;
+}
+
+.prose pre {
+  padding: 14px 16px;
+  overflow-x: auto;
+  background: rgb(8 5 16 / 60%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.prose pre code {
+  padding: 0;
+  font-size: 0.75em;
+  background: none;
+}
+
+.prose table {
+  border-collapse: collapse;
+}
+
+.prose th,
+.prose td {
+  padding: 0.35em 0.75em;
+  border: 1px solid var(--border);
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+
+.prose img {
+  max-width: 100%;
+}
+
+.prose .katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.2em 0;
+}
+
+.prose eqn {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

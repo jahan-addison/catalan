@@ -6,7 +6,9 @@ build
 build-*
 cpm_modules
 dist
-frontend
+frontend/node_modules
+frontend/dist
+frontend/screenshots
 *.db
 decisions.md
 admin/.venv

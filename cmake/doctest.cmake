@@ -5,7 +5,8 @@ add_executable(Test_Suite ${sources} ${test_sources})
 
 set_target_properties(Test_Suite PROPERTIES OUTPUT_NAME "test_suite")
 
-target_include_directories(Test_Suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(Test_Suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+                                              ${CATALAN_GENERATED_DIR})
 
 target_link_libraries(Test_Suite PRIVATE doctest::doctest
                                          sqlite_orm::sqlite_orm Crow::Crow)

@@ -41,6 +41,8 @@ tags:
     description: Create, read, and list posts
   - name: Health
     description: Liveness for deployment checks
+  - name: Site
+    description: Internal routes the website's proxy uses, not for API clients
 
 paths:
   /v1/posts:
@@ -216,6 +218,32 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /meta/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PostId'
+    get:
+      operationId: getPostMeta
+      summary: Get a post's link preview tags
+      description: |
+        The `<title>` and Open Graph meta tags for a post, as an HTML fragment.
+        The website's proxy fills them into its HTML for post URLs, so link
+        previews in chat apps show the post's title and excerpt without
+        running JavaScript. Every value is HTML-escaped.
+
+        Always `200`: an unknown or malformed id, or a database failure, gets
+        catalan's default tags. Unlisted posts include `robots: noindex`.
+      tags: [Site]
+      responses:
+        '200':
+          description: Meta tags for the post, or the defaults
+          content:
+            text/html:
+              schema:
+                type: string
+              example: |
+                <title>Euler's identity · catalan</title>
+                <meta property="og:title" content="Euler&#39;s identity">
+
   /health:
     get:
       operationId: getHealth
@@ -359,9 +387,9 @@ components:
           example: '2026-10-24T03:15:00Z'
 
     PostSummary:
-      description: A post without its body, used in listings
+      description: A post with an excerpt instead of its body, used in listings
       type: object
-      required: [id, title, author, parent_id, created_at]
+      required: [id, title, author, parent_id, excerpt, created_at]
       properties:
         id:
           $ref: '#/components/schemas/PostId'
@@ -373,6 +401,13 @@ components:
           oneOf:
             - $ref: '#/components/schemas/PostId'
             - type: 'null'
+        excerpt:
+          type: string
+          maxLength: 101
+          description: |
+            The first 100 characters of `body`, with each run of whitespace
+            collapsed to one space. Ends with `…` when the body is longer.
+          example: "# Euler's identity $$e^{i\\pi} + 1 = 0$$"
         created_at:
           type: string
           format: date-time

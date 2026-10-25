@@ -88,6 +88,27 @@ cpmaddpackage(
 cpmaddpackage("gh:fnc12/sqlite_orm#v1.9.1")
 
 # ##############################################################################
+# Examples
+# ##############################################################################
+
+# examples/*.md are the seed posts and the editor's example. The server gets
+# them through a generated header, so there is one copy of each.
+set(CATALAN_EXAMPLES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/examples")
+file(READ "${CATALAN_EXAMPLES_DIR}/euler-identity.md"
+     CATALAN_EXAMPLE_EULER_IDENTITY)
+file(READ "${CATALAN_EXAMPLES_DIR}/basel-problem.md"
+     CATALAN_EXAMPLE_BASEL_PROBLEM)
+set_property(
+  DIRECTORY
+  APPEND
+  PROPERTY CMAKE_CONFIGURE_DEPENDS "${CATALAN_EXAMPLES_DIR}/euler-identity.md"
+           "${CATALAN_EXAMPLES_DIR}/basel-problem.md")
+
+set(CATALAN_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+configure_file(cmake/examples.hh.in
+               "${CATALAN_GENERATED_DIR}/catalan/examples.hh" @ONLY)
+
+# ##############################################################################
 # Warnings
 # ##############################################################################
 
@@ -119,7 +140,8 @@ file(GLOB_RECURSE test_sources CONFIGURE_DEPENDS
 
 add_executable(${PROJECT_NAME} ${sources} ${headers})
 
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+                                                   ${CATALAN_GENERATED_DIR})
 
 target_compile_options(${PROJECT_NAME} PRIVATE ${CATALAN_WARNINGS})
 target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG>)

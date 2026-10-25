@@ -210,6 +210,15 @@ TEST_CASE("list_posts")
             catalan::orm::insert_post(storage, hidden);
         });
 
+        auto const page = db.with_storage([](auto& storage) {
+            return catalan::orm::list_posts(
+                storage, 1, Order::desc, std::nullopt);
+        });
+        REQUIRE_EQ(page.posts.size(), 1);
+        CHECK_EQ(page.posts[0].body_prefix, "$$e^{i\\pi} + 1 = 0$$");
+        CHECK_EQ(page.posts[0].body_length,
+            static_cast<std::int64_t>(page.posts[0].body_prefix.size()));
+
         CHECK_EQ(walk(db, 20, Order::desc),
             std::vector<std::string>{
                 numbered_id(2), numbered_id(3), numbered_id(1) });
@@ -345,6 +354,26 @@ TEST_CASE("insert_post_once")
                 key);
         }));
     }
+}
+
+TEST_CASE("list_posts reads only a body prefix")
+{
+    Temp_Database_Path temp{};
+    catalan::orm::Database db{ temp.string() };
+
+    auto post = make_post("7HcPq2mVa0Rn");
+    post.body = std::string(10'000, 'x');
+    db.with_storage(
+        [&](auto& storage) { catalan::orm::insert_post(storage, post); });
+
+    auto const page = db.with_storage([](auto& storage) {
+        return catalan::orm::list_posts(
+            storage, 20, catalan::orm::Order::desc, std::nullopt);
+    });
+    REQUIRE_EQ(page.posts.size(), 1);
+    CHECK_EQ(page.posts[0].body_prefix.size(),
+        static_cast<std::size_t>(catalan::orm::k_body_prefix_length));
+    CHECK_EQ(page.posts[0].body_length, 10'000);
 }
 
 TEST_CASE("check_health")

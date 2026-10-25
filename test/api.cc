@@ -493,28 +493,50 @@ TEST_CASE("get_post")
     {
         auto res = catalan::api::get_post(db, crow::request{}, id);
         CHECK_EQ(res.code, 200);
-        CHECK_EQ(res.get_header_value("ETag"), "\"" + id + "\"");
-        CHECK_EQ(
-            res.get_header_value("Cache-Control"), "public, max-age=86400");
+        CHECK_EQ(res.get_header_value("ETag").size(), 18);
+        CHECK_EQ(res.get_header_value("Cache-Control"), "no-cache");
         CHECK_EQ(std::string{ crow::json::load(res.body)["id"].s() }, id);
     }
 
     SUBCASE("304 for a matching If-None-Match")
     {
+        auto const etag = catalan::api::get_post(db, crow::request{}, id)
+                              .get_header_value("ETag");
         crow::request req{};
-        req.headers.emplace("If-None-Match", "W/\"other\", \"" + id + "\"");
+        req.headers.emplace("If-None-Match", "W/\"other\", " + etag);
         auto res = catalan::api::get_post(db, req, id);
         CHECK_EQ(res.code, 304);
+        CHECK_EQ(res.get_header_value("ETag"), etag);
         CHECK(res.body.empty());
+    }
+
+    SUBCASE("200, not 304, for a corrected post")
+    {
+        auto const etag = catalan::api::get_post(db, crow::request{}, id)
+                              .get_header_value("ETag");
+        db.with_storage([&](auto& storage) {
+            auto post = storage.template get<catalan::orm::Post>(id);
+            post.title = "Corrected";
+            storage.update(post);
+        });
+        crow::request req{};
+        req.headers.emplace("If-None-Match", etag);
+        auto res = catalan::api::get_post(db, req, id);
+        CHECK_EQ(res.code, 200);
+        CHECK_NE(res.get_header_value("ETag"), etag);
+        CHECK_EQ(std::string{ crow::json::load(res.body)["title"].s() },
+            "Corrected");
     }
 
     SUBCASE("404, not 304, for a removed post")
     {
+        auto const etag = catalan::api::get_post(db, crow::request{}, id)
+                              .get_header_value("ETag");
         db.with_storage([&](auto& storage) {
             storage.template remove<catalan::orm::Post>(id);
         });
         crow::request req{};
-        req.headers.emplace("If-None-Match", "\"" + id + "\"");
+        req.headers.emplace("If-None-Match", etag);
         CHECK_EQ(catalan::api::get_post(db, req, id).code, 404);
     }
 
@@ -538,6 +560,10 @@ TEST_CASE("get_post_raw")
     CHECK_EQ(res.code, 200);
     CHECK_EQ(res.body, "$$e^{i\\pi} + 1 = 0$$");
     CHECK_EQ(res.get_header_value("Content-Type"), "text/plain; charset=utf-8");
+    CHECK_EQ(res.get_header_value("Cache-Control"), "no-cache");
+    CHECK_EQ(res.get_header_value("ETag"),
+        catalan::api::get_post(db, crow::request{}, id)
+            .get_header_value("ETag"));
 }
 
 TEST_CASE("list_posts handler")

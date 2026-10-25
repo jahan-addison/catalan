@@ -31,9 +31,6 @@ int main()
 {
     crow::SimpleApp app;
 
-    // Startup failures (unopenable database, bad CATALAN_PORT) are logged
-    // and exit 1, so `docker logs` shows why the container died. Crow
-    // doesn't throw on a port already in use, it logs that itself
     try {
         catalan::orm::Database db{ env_or("CATALAN_DB", "catalan.db") };
         if (db.is_new()) {
@@ -43,7 +40,9 @@ int main()
             CROW_LOG_INFO << "new database, seeded the example posts";
         }
 
-        // routes only forward to api.hh, which the tests can reach
+        ////////////
+        // Routes //
+        ////////////
 
         catalan::turnstile::initialize();
         catalan::turnstile::Verifier verify{};

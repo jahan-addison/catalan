@@ -128,12 +128,14 @@ Cursors are opaque. Posts created while you page appear at the newest end, and n
 
 ## Caching
 
-`GET /v1/posts/{id}` and `/raw` send an `ETag` and `Cache-Control: public, max-age=86400`. Send the `ETag` back as `If-None-Match` to get a `304 Not Modified` with no body:
+`GET /v1/posts/{id}` and `/raw` send an `ETag` and `Cache-Control: no-cache`. A cached copy is checked on every use: send the `ETag` back as `If-None-Match` to get a `304 Not Modified` with no body:
 
 ```bash
-curl -i https://api.example.com/v1/posts/7HcPq2mVa0Rn -H 'If-None-Match: "7HcPq2mVa0Rn"'
+curl -i https://api.example.com/v1/posts/7HcPq2mVa0Rn -H 'If-None-Match: "9f2c4e1ab07d3355"'
 # HTTP/1.1 304 Not Modified
 ```
+
+The `ETag` is a hash of the post, so a post the operator corrects or removes is current on the next request.
 
 ---
 
@@ -231,4 +233,4 @@ Unlisted posts include `robots: noindex`. `/meta` is for the site's proxy, not A
 
 ## Removed posts
 
-Posts can't be deleted through the API. The site's operator can remove a post for abuse or illegal content, see [development.md](development.md#removing-a-post). A removed post is a `404`, including for a matching `If-None-Match`.
+Posts can't be deleted through the API. The site's operator can remove a post for abuse or illegal content, see [development.md](development.md#removing-a-post). A removed post is a `404` on the next request, including for a matching `If-None-Match`.

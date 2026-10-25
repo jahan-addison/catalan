@@ -16,7 +16,7 @@ def count(path: str, table: str) -> int:
 
 
 def test_version() -> None:
-    assert __version__ == "1.0.1"
+    assert __version__ == "1.0.2"
 
 
 def test_get_post(database_path: str) -> None:

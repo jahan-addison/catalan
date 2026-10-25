@@ -38,9 +38,9 @@ namespace {
 
 inline constexpr std::string_view k_json_type = "application/json";
 inline constexpr std::string_view k_problem_type = "application/problem+json";
-// a day, then a cheap revalidation with the ETag, so a removed post leaves
-// caches within a day
-inline constexpr std::string_view k_cache_control = "public, max-age=86400";
+// cached, but revalidated with the ETag on every use, so a removed or
+// corrected post is current on the next request
+inline constexpr std::string_view k_cache_control = "no-cache";
 
 /**
  * @brief Length in Unicode code points, the unit of JSON Schema's maxLength
@@ -96,29 +96,61 @@ void set_nullable(crow::json::wvalue& json,
 }
 
 /**
- * @brief Quote a post id as its ETag
+ * @brief Fold bytes into a 64-bit FNV-1a hash
+ */
+constexpr std::uint64_t fnv1a(std::uint64_t hash, std::string_view bytes)
+{
+    for (auto const c : bytes) {
+        hash ^= static_cast<unsigned char>(c);
+        hash *= 0x100000001b3ULL;
+    }
+    return hash;
+}
+
+/**
+ * @brief Quote a hash of every field of a post as its ETag
+ *
+ * Each field is length-prefixed, so no two posts hash the same bytes. Any
+ * change to a post, e.g. an operator correcting its title, changes its ETag.
  *
  *  Example:
  *
- *    etag_for("7HcPq2mVa0Rn"); // "\"7HcPq2mVa0Rn\""
+ *    etag_for(post); // "\"9f2c4e1ab07d3355\""
  */
-std::string etag_for(std::string const& id)
+std::string etag_for(orm::Post const& post)
 {
-    return "\"" + id + "\"";
+    auto hash = 0xcbf29ce484222325ULL;
+    auto const field = [&](std::string_view value) {
+        hash = fnv1a(hash, std::to_string(value.size()) + ":");
+        hash = fnv1a(hash, value);
+    };
+    auto const optional_field = [&](std::optional<std::string> const& value) {
+        field(value ? "1" : "0");
+        field(value.value_or(""));
+    };
+
+    field(post.id);
+    field(std::to_string(post.created_at));
+    field(post.unlisted ? "1" : "0");
+    optional_field(post.parent_id);
+    optional_field(post.title);
+    optional_field(post.author);
+    field(post.body);
+    return std::format("\"{:016x}\"", hash);
 }
 
 /**
  * @brief Check an If-None-Match header against an ETag
  *
  * The header is a comma-separated list, or "*" for any version. A weak
- * W/ prefix compares the same, posts never change.
+ * W/ prefix compares the same, the ETag already names the exact contents.
  *
  *  Examples:
  *
- *    if_none_match("\"7HcPq2mVa0Rn\"", etag);           // true
- *    if_none_match("\"x\", W/\"7HcPq2mVa0Rn\"", etag);  // true
- *    if_none_match("*", etag);                          // true
- *    if_none_match("\"4fQx9ZtLb2Wk\"", etag);           // false
+ *    if_none_match("\"9f2c4e1ab07d3355\"", etag);           // true
+ *    if_none_match("\"x\", W/\"9f2c4e1ab07d3355\"", etag);  // true
+ *    if_none_match("*", etag);                              // true
+ *    if_none_match("\"04be7a61c9d0f218\"", etag);           // false
  */
 bool if_none_match(std::string_view header, std::string_view etag)
 {
@@ -178,7 +210,8 @@ crow::response internal_error(std::string_view where,
  *
  * The 404, 304, and cache headers are the same for both, only the 200 body
  * differs. A malformed id never touches the database. The post is looked up
- * before answering 304, since an operator can remove it, see admin/.
+ * before answering 304, since an operator can remove or correct it, see
+ * admin/.
  */
 template<typename Render>
 crow::response respond_with_post(orm::Database& db,
@@ -200,7 +233,7 @@ crow::response respond_with_post(orm::Database& db,
     if (not post)
         return problem(404, "Post not found");
 
-    auto const etag = etag_for(id);
+    auto const etag = etag_for(*post);
     auto const& match = req.get_header_value("If-None-Match");
     if (not match.empty() and if_none_match(match, etag)) {
         crow::response res{ 304 };

@@ -214,7 +214,7 @@ docker run --rm -it -v catalan-data:/data "$IMAGE-admin:$TAG" show <id>
 docker run --rm -it -v catalan-data:/data "$IMAGE-admin:$TAG" remove <id>
 ```
 
-`show` prints the post and every edit of it, and `remove` asks for confirmation (`--yes` skips it). A post with edits isn't removed unless you pass `--with-edits`, which also removes the edits of its edits. A removed post is a `404` right away. Browsers may keep a copy they cached for up to a day.
+`show` prints the post and every edit of it, and `remove` asks for confirmation (`--yes` skips it). A post with edits isn't removed unless you pass `--with-edits`, which also removes the edits of its edits. A removed post is a `404` right away, browsers revalidate their copy on every view.
 
 To work on the CLI itself:
 

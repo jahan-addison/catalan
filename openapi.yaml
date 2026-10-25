@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Catalan
-  version: 1.0.1
+  version: 1.0.2
   summary: A pastebin for math and LaTeX
   description: |
     Catalan is a pastebin for math via Markdown and LaTeX.
@@ -169,9 +169,9 @@ paths:
       operationId: getPost
       summary: Get a post
       description: |
-        Responses are cacheable for a day. Send the `ETag` back as
-        `If-None-Match` to get a `304` with no body. A removed post is a `404`,
-        even with a matching `If-None-Match`.
+        Responses are cached and revalidated on every use. Send the `ETag`
+        back as `If-None-Match` to get a `304` with no body. A removed post is
+        a `404`, even with a matching `If-None-Match`.
       tags: [Posts]
       parameters:
         - $ref: '#/components/parameters/IfNoneMatch'
@@ -324,18 +324,21 @@ components:
 
   headers:
     ETag:
-      description: Version tag for the post. Never changes, since posts are immutable.
+      description: |
+        A hash of every field of the post. It changes when the operator
+        corrects a post.
       schema:
         type: string
-        example: '"7HcPq2mVa0Rn"'
+        example: '"9f2c4e1ab07d3355"'
 
     CacheControl:
       description: |
-        Posts never change, but an operator can remove one, so caches keep a
-        post for a day and then revalidate it with the `ETag`.
+        Posts don't change through the API, but an operator can remove or
+        correct one, so caches revalidate a post with its `ETag` on every
+        use.
       schema:
         type: string
-        example: public, max-age=86400
+        example: no-cache
 
     IdempotentReplayed:
       description: |

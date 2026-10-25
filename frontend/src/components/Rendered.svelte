@@ -3,14 +3,14 @@
 
   let { source }: { source: string } = $props();
 
-  let render = $state<Renderer | null>(null);
-  load_renderer().then((loaded) => (render = loaded));
+  let renderer = $state<Renderer | null>(null);
+  load_renderer().then((loaded) => (renderer = loaded));
 
   // render() sanitizes, so the HTML is safe to insert
-  const html = $derived(render ? render(source) : "");
+  const html = $derived(renderer ? renderer.render(source) : "");
 </script>
 
-{#if render}
+{#if renderer}
   <div class="prose">{@html html}</div>
 {:else}
   <div class="prose pending" aria-busy="true">{source}</div>

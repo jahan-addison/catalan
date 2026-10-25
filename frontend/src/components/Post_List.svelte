@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Post_Summary } from "../lib/api";
+  import Title from "./Title.svelte";
   import { full_time, relative_time } from "../lib/time";
 
   let { posts }: { posts: Post_Summary[] } = $props();
@@ -10,7 +11,7 @@
     <li>
       <a class="post" href="/{post.id}">
         <span class="title" class:untitled={!post.title}>
-          {post.title ?? post.excerpt}
+          {#if post.title}<Title source={post.title} />{:else}{post.excerpt}{/if}
         </span>
         <span class="meta">
           {#if post.author}<span>{post.author}</span><span aria-hidden="true">·</span>{/if}

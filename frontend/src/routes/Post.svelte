@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Rendered from "../components/Rendered.svelte";
+  import Title from "../components/Title.svelte";
   import { get_post, type Post } from "../lib/api";
   import { contact_email, report_link } from "../lib/contact";
   import { full_time, relative_time } from "../lib/time";
+  import { plain_title } from "../lib/title";
   import Missing from "./Missing.svelte";
 
   let { id }: { id: string } = $props();
@@ -16,7 +18,8 @@
     try {
       post = await get_post(id);
       status = post ? "ready" : "missing";
-      document.title = post ? `${post.title ?? "Untitled post"} · catalan` : "catalan";
+      const title = post?.title ? plain_title(post.title) : "Untitled post";
+      document.title = post ? `${title} · catalan` : "catalan";
     } catch {
       status = "failed";
     }
@@ -38,7 +41,9 @@
 {:else if post}
   <article>
     <header class="head">
-      <h1 class:untitled={!post.title}>{post.title ?? "Untitled post"}</h1>
+      <h1 class:untitled={!post.title}>
+        {#if post.title}<Title source={post.title} />{:else}Untitled post{/if}
+      </h1>
       <p class="meta">
         <span>{post.author ?? "Anonymous"}</span>
         <span aria-hidden="true">·</span>

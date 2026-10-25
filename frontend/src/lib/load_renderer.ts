@@ -8,15 +8,15 @@
 /**
  * @brief The render pipeline, loaded once as its own chunk
  *
- * KaTeX is most of the bundle, and only pages that render a post need it.
- * Loading it separately lets the page shell appear first, with KaTeX
- * downloading alongside the post's data.
+ * KaTeX is most of the bundle, and only pages that render a post or a title
+ * with math need it. Loading it separately lets the page shell appear first,
+ * with KaTeX downloading alongside the post's data.
  */
-export type Renderer = (source: string) => string;
+export type Renderer = typeof import("./render");
 
 let renderer: Promise<Renderer> | null = null;
 
 export function load_renderer(): Promise<Renderer> {
-  renderer ??= import("./render").then((module) => module.render);
+  renderer ??= import("./render");
   return renderer;
 }

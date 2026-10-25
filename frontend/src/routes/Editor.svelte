@@ -3,6 +3,7 @@
   import Human_Check from "../components/Human_Check.svelte";
   import Post_List from "../components/Post_List.svelte";
   import Rendered from "../components/Rendered.svelte";
+  import Title from "../components/Title.svelte";
   import {
     Api_Error,
     Draft_Key,
@@ -148,8 +149,9 @@
     <p class="notice">That post doesn't exist, so this is a new post instead of an edit.</p>
   {:else if parent}
     <p class="notice">
-      Editing <a href="/{parent.id}">{parent.title ?? "an untitled post"}</a> as a new post. The
-      original stays unchanged.
+      Editing
+      <a href="/{parent.id}">{#if parent.title}<Title source={parent.title} />{:else}an untitled post{/if}</a>
+      as a new post. The original stays unchanged.
     </p>
   {/if}
 

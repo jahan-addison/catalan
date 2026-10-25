@@ -10,6 +10,7 @@ import katex from "katex";
 import MarkdownIt from "markdown-it";
 import texmath from "markdown-it-texmath";
 import "katex/dist/katex.min.css";
+import { inline_math } from "./title";
 
 /****************************************************************************
  * Render
@@ -33,6 +34,13 @@ import "katex/dist/katex.min.css";
  *
  ****************************************************************************/
 
+const katex_options = {
+  throwOnError: false,
+  trust: false,
+  output: "htmlAndMathml",
+  maxExpand: 1000,
+} as const;
+
 const markdown = new MarkdownIt({
   html: false,
   linkify: true,
@@ -40,13 +48,13 @@ const markdown = new MarkdownIt({
 }).use(texmath, {
   engine: katex,
   delimiters: "dollars",
-  katexOptions: {
-    throwOnError: false,
-    trust: false,
-    output: "htmlAndMathml",
-    maxExpand: 1000,
-  },
+  katexOptions: katex_options,
 });
+
+const sanitize_options = {
+  USE_PROFILES: { html: true, mathMl: true, svg: true },
+  ADD_TAGS: ["eq", "eqn"],
+};
 
 // links in posts lead anywhere, so they carry no referrer or ranking
 DOMPurify.addHook("afterSanitizeAttributes", (node) => {
@@ -61,8 +69,31 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
  *  LaTeX, to sanitized HTML
  */
 export function render(source: string): string {
-  return DOMPurify.sanitize(markdown.render(source), {
-    USE_PROFILES: { html: true, mathMl: true, svg: true },
-    ADD_TAGS: ["eq", "eqn"],
-  });
+  return DOMPurify.sanitize(markdown.render(source), sanitize_options);
+}
+
+/**
+ * @brief Render a title's inline $...$ LaTeX to sanitized HTML
+ *
+ * Only math, the rest stays text. Titles are shown inside links and
+ * headings, where Markdown links and blocks don't belong.
+ *
+ *  Example:
+ *
+ *    render_title("$n^3 - n$ Proof");
+ *
+ *  Becomes:
+ *
+ *    <span class="katex">...</span> Proof
+ */
+export function render_title(source: string): string {
+  let html = "";
+  let last = 0;
+  for (const match of source.matchAll(inline_math)) {
+    html += markdown.utils.escapeHtml(source.slice(last, match.index));
+    html += katex.renderToString(match[1] ?? "", katex_options);
+    last = match.index + match[0].length;
+  }
+  html += markdown.utils.escapeHtml(source.slice(last));
+  return DOMPurify.sanitize(html, sanitize_options);
 }

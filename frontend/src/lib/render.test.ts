@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { render } from "./render";
+import { render, render_title } from "./render";
 import basel from "../../../examples/basel-problem.md?raw";
 import euler from "../../../examples/euler-identity.md?raw";
 import terms from "../content/terms.md?raw";
@@ -75,5 +75,22 @@ describe("render", () => {
     const page = new DOMParser().parseFromString(render(terms), "text/html");
     expect(page.querySelectorAll(".katex-error")).toHaveLength(0);
     expect(page.querySelector("h1")?.textContent).toBe("Terms of use");
+  });
+});
+
+describe("render_title", () => {
+  it("renders inline math and keeps the rest as text", () => {
+    const html = render_title("$n^3 - n$ Proof");
+    expect(html).toContain('class="katex"');
+    expect(html).toMatch(/<\/span> Proof$/);
+  });
+
+  it("doesn't render Markdown or HTML", () => {
+    const html = render_title("**bold** [link](https://example.com) <b>x</b>");
+    expect(html).toBe("**bold** [link](https://example.com) &lt;b&gt;x&lt;/b&gt;");
+  });
+
+  it("leaves prices as text", () => {
+    expect(render_title("$5 and $10")).toBe("$5 and $10");
   });
 });

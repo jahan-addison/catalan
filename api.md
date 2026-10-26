@@ -233,4 +233,4 @@ Unlisted posts include `robots: noindex`. `/meta` is for the site's proxy, not A
 
 ## Removed posts
 
-Posts can't be deleted through the API. The site's operator can remove a post for abuse or illegal content, see [development.md](development.md#removing-a-post). A removed post is a `404` on the next request, including for a matching `If-None-Match`.
+Posts can't be deleted through the API. The site's operator can remove a post for abuse or illegal content, see [development.md](development.md#reviewing-and-removing-posts). A removed post is a `404` on the next request, including for a matching `If-None-Match`.

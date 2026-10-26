@@ -13,7 +13,7 @@ How to build, test, and operate catalan beyond the quick start in the [README](R
 - [Example posts](#example-posts)
 - [Cross-compiling](#cross-compiling)
 - [Configuration](#configuration)
-- [Removing a post](#removing-a-post)
+- [Reviewing and removing posts](#reviewing-and-removing-posts)
 - [Dependencies](#dependencies)
 
 ---
@@ -201,29 +201,17 @@ docker save catalan:$TAG catalan-proxy:$TAG | gzip | ssh user@server 'gunzip | d
 
 ---
 
-## Removing a post
+## Reviewing and removing posts
 
-The API can't delete posts. Reports arrive by email through the site's report links, with the post's id in the subject. For abuse or illegal content, the operator CLI in `admin/` removes posts directly from the database, alongside the running server:
+The API can't delete posts. Reports arrive by email through the site's report links, with the post's id in the subject. The operator CLI in `admin/` doesn't wait for one: it browses every post, unlisted ones included, and removes posts for abuse or illegal content directly from the database, alongside the running server.
 
 ```bash
-docker buildx build --platform linux/amd64 --target admin \
-  -t "$IMAGE-admin:$TAG" --push .
-
 # on the server
-docker run --rm -it -v catalan-data:/data "$IMAGE-admin:$TAG" show <id>
+docker run --rm -it -v catalan-data:/data "$IMAGE-admin:$TAG" list
 docker run --rm -it -v catalan-data:/data "$IMAGE-admin:$TAG" remove <id>
 ```
 
-`show` prints the post and every edit of it, and `remove` asks for confirmation (`--yes` skips it). A post with edits isn't removed unless you pass `--with-edits`, which also removes the edits of its edits. A removed post is a `404` right away, browsers revalidate their copy on every view.
-
-To work on the CLI itself:
-
-```bash
-cd admin
-poetry install
-make test                                      # mypy, flake8, then pytest
-poetry run python -m catalan_admin --db ../catalan.db show <id>
-```
+> 📖 Commands, keys, and building the image are in [admin/README.md](admin/README.md)
 
 ---
 

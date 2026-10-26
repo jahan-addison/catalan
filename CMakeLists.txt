@@ -19,7 +19,7 @@ endif()
 
 project(
   catalan
-  VERSION 1.0.2
+  VERSION 1.1.0
   LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)

@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from types import TracebackType
-from typing import List, Optional, Type
+from typing import List, Optional, Tuple, Type
 
 # catalan::orm::k_schema_version, the schema the queries below are written for
 SCHEMA_VERSION = 2
@@ -46,6 +46,43 @@ class Post:
     title: Optional[str]
     author: Optional[str]
     body: str
+
+
+# (created_at, id) of the last post on a page, where the next one starts
+Cursor = Tuple[int, str]
+
+
+@dataclass(frozen=True)
+class Page:
+    """One page of posts, newest first.
+
+    Attributes:
+        posts: The posts on this page.
+        next: Where the next page starts, or None on the last page.
+
+    """
+
+    posts: List[Post]
+    next: Optional[Cursor]
+
+
+def filters(since: Optional[int], unlisted_only: bool) -> List[str]:
+    """Build the SQL conditions shared by list_posts and count_posts.
+
+    Args:
+        since: Only posts created at or after this time, bound as :since.
+        unlisted_only: Only unlisted posts.
+
+    Returns:
+        The conditions, empty for every post.
+
+    """
+    conditions = []
+    if since is not None:
+        conditions.append("created_at >= :since")
+    if unlisted_only:
+        conditions.append("unlisted = 1")
+    return conditions
 
 
 class Database:
@@ -112,6 +149,71 @@ class Database:
         if row is None:
             return None
         return Post(row[0], row[1], bool(row[2]), row[3], row[4], row[5], row[6])
+
+    def list_posts(
+        self,
+        limit: int,
+        after: Optional[Cursor] = None,
+        since: Optional[int] = None,
+        unlisted_only: bool = False,
+    ) -> Page:
+        """List posts newest first, unlisted ones included.
+
+        Pages are keyset pagination over (created_at, id), the same as the
+        API's listing, so a post created while paging never shifts a page.
+        One extra row is read to know whether another page follows.
+
+        Args:
+            limit: Posts per page.
+            after: The previous page's next, None for the first page.
+            since: Only posts created at or after this time, in epoch ms.
+            unlisted_only: Only unlisted posts.
+
+        Returns:
+            The page.
+
+        """
+        conditions = [
+            "(:after_at IS NULL OR (created_at, id) < (:after_at, :after_id))",
+            *filters(since, unlisted_only),
+        ]
+        rows = self._connection.execute(
+            "SELECT id, created_at, unlisted, parent_id, title, author, body "
+            f"FROM posts WHERE {' AND '.join(conditions)} "
+            "ORDER BY created_at DESC, id DESC LIMIT :limit",
+            {
+                "after_at": after[0] if after else None,
+                "after_id": after[1] if after else None,
+                "since": since,
+                "limit": limit + 1,
+            },
+        ).fetchall()
+        posts = [
+            Post(row[0], row[1], bool(row[2]), row[3], row[4], row[5], row[6])
+            for row in rows[:limit]
+        ]
+        last = posts[-1] if len(rows) > limit else None
+        return Page(posts, (last.created_at, last.id) if last else None)
+
+    def count_posts(
+        self, since: Optional[int] = None, unlisted_only: bool = False
+    ) -> int:
+        """Count the posts list_posts pages through.
+
+        Args:
+            since: Only posts created at or after this time, in epoch ms.
+            unlisted_only: Only unlisted posts.
+
+        Returns:
+            The number of posts.
+
+        """
+        conditions = filters(since, unlisted_only) or ["1"]
+        total: int = self._connection.execute(
+            f"SELECT count(*) FROM posts WHERE {' AND '.join(conditions)}",
+            {"since": since},
+        ).fetchone()[0]
+        return total
 
     def get_edits(self, id: str) -> List[str]:
         """Get every post descended from a post.

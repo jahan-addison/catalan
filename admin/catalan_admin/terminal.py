@@ -65,12 +65,13 @@ def decode_key(sequence: str) -> str:
         sequence: The characters one keypress sent.
 
     Returns:
-        "next", "previous", "quit", or "" for any other key.
+        "next", "previous", "refresh", "quit", or "" for any other key.
 
     Examples:
 
         decode_key("\\033[B")  # "next", the down arrow
         decode_key("k")        # "previous"
+        decode_key("r")        # "refresh"
         decode_key("x")        # ""
 
     """
@@ -78,6 +79,8 @@ def decode_key(sequence: str) -> str:
         return "next"
     if sequence in ("\033[A", "\033OA", "k"):
         return "previous"
+    if sequence in ("r", "R"):
+        return "refresh"
     if sequence in ("q", "Q", "\033", "\x03"):
         return "quit"
     return ""
@@ -92,7 +95,7 @@ def read_key() -> str:
     alone still quits.
 
     Returns:
-        "next", "previous", "quit", or "" for any other key.
+        "next", "previous", "refresh", "quit", or "" for any other key.
 
     """
     descriptor = sys.stdin.fileno()

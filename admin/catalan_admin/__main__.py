@@ -151,6 +151,7 @@ def format_keys(number: int, pages: int, style: Style) -> str:
         keys.append("↓ next")
     if number > 1:
         keys.append("↑ previous")
+    keys.append("r refresh")
     keys.append("q quit")
     return style.dim("   ".join(keys))
 
@@ -167,8 +168,9 @@ def list_posts(
     """Print every post newest first, a page at a time, grouped by day.
 
     With keys, the pages are browsed on a terminal: each one replaces the
-    last, and keys move to the next or previous page. Without, every page
-    is printed in order.
+    last, and keys move to the next or previous page. Refresh recounts the
+    posts and goes back to the first page, for posts made since the count.
+    Without keys, every page is printed in order.
 
     Pages are keyset pagination, which only moves forward, so going back
     reuses the start of a page already shown.
@@ -187,14 +189,10 @@ def list_posts(
 
     """
     total = database.count_posts(since, unlisted_only)
-    if total == 0:
-        print("no posts")
-        return 0
-
-    pages = -(-total // limit)
     # starts[n] is where page n + 1 starts, None for the first page
     starts: List[Optional[Cursor]] = [None]
-    while True:
+    while total > 0:
+        pages = -(-total // limit)
         number = len(starts)
         page = database.list_posts(limit, starts[-1], since, unlisted_only)
         text = format_page(
@@ -204,7 +202,8 @@ def list_posts(
         if keys is None:
             print(text)
             if page.next is None:
-                break
+                print(style.dim(f"{total} post(s)"))
+                return 0
             starts.append(page.next)
             continue
 
@@ -220,12 +219,16 @@ def list_posts(
         if action == "quit":
             print()
             return 0
-        if action == "next":
+        if action == "refresh":
+            print()
+            total = database.count_posts(since, unlisted_only)
+            starts = [None]
+        elif action == "next":
             starts.append(page.next)
         else:
             starts.pop()
 
-    print(style.dim(f"{total} post(s)"))
+    print("no posts")
     return 0
 
 

@@ -12,6 +12,8 @@ from catalan_admin.__main__ import format_summary, list_posts, main, remove
 from catalan_admin.database import Database, Edits_Error, Schema_Error
 from catalan_admin.terminal import CLEAR, Style, decode_key, read_key
 
+from .fixture.database import insert_post
+
 
 def count(path: str, table: str) -> int:
     connection = sqlite3.connect(path)
@@ -162,8 +164,52 @@ def test_list_ignores_keys_past_either_end(
     actions = ["previous", "", "next", "next", "next", "quit"]
     output = browse(database_path, actions, capsys)
     assert output.count(CLEAR) == 3
-    assert "↓ next   q quit" in output
-    assert "↑ previous   q quit" in output
+    assert "↓ next   r refresh   q quit" in output
+    assert "↑ previous   r refresh   q quit" in output
+
+
+def test_list_refresh(database_path: str, capsys: pytest.CaptureFixture[str]) -> None:
+    actions = ["next", "refresh", "refresh", "quit"]
+
+    def keys() -> str:
+        action = actions.pop(0)
+        if action == "refresh" and len(actions) == 2:
+            connection = sqlite3.connect(database_path)
+            insert_post(connection, "newer0000000", 1761275700005)
+            connection.commit()
+            connection.close()
+        return action
+
+    with Database(database_path) as database:
+        assert list_posts(database, 2, None, False, keys) == 0
+    screens = capsys.readouterr().out.split(CLEAR)[1:]
+    assert [screen.split(" · ")[0] for screen in screens] == [
+        "━━ Page 1 of 3",
+        "━━ Page 2 of 3",
+        "━━ Page 1 of 3",
+        "━━ Page 1 of 3",
+    ]
+    assert "of 5 ━" in screens[1] and "of 6 ━" in screens[2]
+    assert "newer0000000" in screens[2]
+
+
+def test_list_refresh_after_removing_every_post(
+    database_path: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    actions = ["refresh"]
+
+    def keys() -> str:
+        connection = sqlite3.connect(database_path)
+        connection.execute("DELETE FROM idempotency_keys")
+        connection.execute("UPDATE posts SET parent_id = NULL")
+        connection.execute("DELETE FROM posts")
+        connection.commit()
+        connection.close()
+        return actions.pop(0)
+
+    with Database(database_path) as database:
+        assert list_posts(database, 2, None, False, keys) == 0
+    assert capsys.readouterr().out.endswith("\nno posts\n")
 
 
 def test_read_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,6 +222,7 @@ def test_read_key(monkeypatch: pytest.MonkeyPatch) -> None:
         for typed, action in [
             (b"\033[B", "next"),
             (b"\033[A", "previous"),
+            (b"r", "refresh"),
             (b"\033", "quit"),
             (b"x", ""),
         ]:
@@ -192,6 +239,7 @@ def test_decode_key() -> None:
     assert decode_key("\r") == "next"
     assert decode_key("\033[A") == "previous"
     assert decode_key("k") == "previous"
+    assert decode_key("r") == "refresh"
     assert decode_key("q") == "quit"
     assert decode_key("\033") == "quit"
     assert decode_key("x") == ""

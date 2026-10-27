@@ -44,11 +44,12 @@ Thu, Oct 15 2026
          Wallis product, by gauss fan
          $$\frac{\pi}{2} = \prod_{n=1}^\infty \frac{4n^2}{4n^2 - 1}$$
 
-↓ next   q quit
+↓ next   r refresh   q quit
 ```
 
 * `↓`, Enter, or Space - the next page
 * `↑` - the previous page
+* `r` - count the posts again and go back to the first page, where new posts land
 * `q` or Esc - quit
 * `--since YYYY-MM-DD` - only posts from that UTC date on, to pick up where the last review stopped
 * `--unlisted` - only unlisted posts. No one browses to them, so a report is least likely there

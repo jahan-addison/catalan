@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Catalan
-  version: 1.1.0
+  version: 1.1.1
   summary: A pastebin for math and LaTeX
   description: |
     Catalan is a pastebin for math via Markdown and LaTeX.

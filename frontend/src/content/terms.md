@@ -1,6 +1,6 @@
 # Terms of use
 
-*Last updated October 24, 2026*
+*Last updated November 8, 2026*
 
 ## The short version
 
@@ -32,9 +32,13 @@ Each new post needs a quick human check, by Cloudflare Turnstile. Reading posts 
 
 ## Privacy
 
-There are no accounts, and this site sets no cookies of its own. It stores what you post: the title, author name, and text you enter, and the time. Your browser remembers the author name you last used, in its local storage, only on your device.
+There are no accounts{{^analytics}}, and this site sets no cookies{{/analytics}}. This site stores what you post: the title, author name, and text you enter, and the time. Your browser remembers the author name you last used, in its local storage, only on your device.
 
 Your IP address isn't stored. It's used briefly to apply the rate limits, and sent to Cloudflare to verify the human check, under [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/). The site's fonts may load from Adobe Fonts, under [Adobe's privacy policy](https://www.adobe.com/privacy/policy.html).
+
+{{#analytics}}
+This site uses Google Analytics to count visits and see which pages are read. Google's tag sets cookies on this site, `_ga` and one starting `_ga_`, to tell visits apart, and sends Google your IP address, the pages you view, and your browser and device, under [Google's privacy policy](https://policies.google.com/privacy). Google Analytics doesn't store IP addresses. To opt out, block cookies for this site, or use [Google's opt-out add-on](https://tools.google.com/dlpage/gaoptout).
+{{/analytics}}
 
 ## Reporting and removal
 

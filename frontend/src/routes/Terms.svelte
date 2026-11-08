@@ -2,13 +2,9 @@
   import { onMount } from "svelte";
   import Rendered from "../components/Rendered.svelte";
   import terms from "../content/terms.md?raw";
-  import { contact_email } from "../lib/contact";
+  import { site_terms } from "../lib/terms";
 
-  // the operator's contact, or a description when the site has none
-  const contact = contact_email
-    ? `[${contact_email}](mailto:${contact_email})`
-    : "the site's operator";
-  const source = terms.replaceAll("{{contact}}", contact);
+  const source = site_terms(terms);
 
   // the title, then the short version in a card, then the sections
   const [preamble = "", summary = "", ...sections] = source.split(/\n(?=## )/);

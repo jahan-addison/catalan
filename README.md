@@ -48,6 +48,7 @@ docker buildx build --platform linux/amd64 --target proxy \
   --build-arg VITE_TYPEKIT_ID=<your kit id> \
   --build-arg VITE_CONTACT_EMAIL=<where reports go> \
   --build-arg VITE_TURNSTILE_SITE_KEY=<turnstile site key> \
+  --build-arg VITE_GA_MEASUREMENT_ID=<GA4 measurement id, optional> \
   -t "$IMAGE-proxy:$TAG" --push .
 ```
 

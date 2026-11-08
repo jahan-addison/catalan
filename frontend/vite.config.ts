@@ -28,6 +28,40 @@ function typekit(kit: string | undefined): Plugin {
 }
 
 /**
+ * @brief Add the Google Analytics (GA4) tag when VITE_GA_MEASUREMENT_ID is set
+ *
+ * Build only, so the dev server never reports page views. Without an id
+ * there is no tag, and nothing loads from Google.
+ */
+function google_analytics(id: string | undefined): Plugin {
+  return {
+    name: "catalan-google-analytics",
+    apply: "build",
+    transformIndexHtml() {
+      if (!id) return [];
+      if (!/^G-[A-Z0-9]+$/.test(id))
+        throw new Error(`VITE_GA_MEASUREMENT_ID should look like G-XXXXXXXXXX, not "${id}"`);
+      return [
+        {
+          tag: "script",
+          attrs: { async: true, src: `https://www.googletagmanager.com/gtag/js?id=${id}` },
+          injectTo: "head",
+        },
+        {
+          tag: "script",
+          children:
+            "window.dataLayer = window.dataLayer || [];" +
+            "function gtag(){dataLayer.push(arguments);}" +
+            "gtag('js', new Date());" +
+            `gtag('config', '${id}');`,
+          injectTo: "head",
+        },
+      ];
+    },
+  };
+}
+
+/**
  * @brief Turn the default meta block into a Caddy template, at build only
  *
  * For a post URL the proxy includes the post's tags from the API's
@@ -65,7 +99,12 @@ export default defineConfig(({ mode }) => {
   // the local catalan server, 18080 unless the dev container already has it
   const api = env.CATALAN_API_TARGET ?? "http://localhost:18080";
   return {
-    plugins: [svelte(), typekit(env.VITE_TYPEKIT_ID), link_preview_template()],
+    plugins: [
+      svelte(),
+      typekit(env.VITE_TYPEKIT_ID),
+      google_analytics(env.VITE_GA_MEASUREMENT_ID?.trim()),
+      link_preview_template(),
+    ],
     server: {
       // examples/ in the repository root holds the editor's example post
       fs: { allow: [".", "../examples"] },

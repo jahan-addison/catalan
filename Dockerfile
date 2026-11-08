@@ -94,10 +94,12 @@ FROM --platform=$BUILDPLATFORM node:24.15-slim AS site-builder
 
 # Optional, frontend/.env.local applies to any left empty. Without a kit the
 # fallback fonts apply, without an email there are no report links, and
-# without a Turnstile site key there is no human check
+# without a Turnstile site key there is no human check, and without a GA4
+# measurement id there is no analytics
 ARG VITE_TYPEKIT_ID=""
 ARG VITE_CONTACT_EMAIL=""
 ARG VITE_TURNSTILE_SITE_KEY=""
+ARG VITE_GA_MEASUREMENT_ID=""
 
 WORKDIR /site
 COPY frontend/package.json frontend/package-lock.json ./
@@ -109,6 +111,7 @@ COPY examples/ /examples/
 RUN if [ -z "${VITE_TYPEKIT_ID}" ]; then unset VITE_TYPEKIT_ID; fi; \
     if [ -z "${VITE_CONTACT_EMAIL}" ]; then unset VITE_CONTACT_EMAIL; fi; \
     if [ -z "${VITE_TURNSTILE_SITE_KEY}" ]; then unset VITE_TURNSTILE_SITE_KEY; fi; \
+    if [ -z "${VITE_GA_MEASUREMENT_ID}" ]; then unset VITE_GA_MEASUREMENT_ID; fi; \
     npm run build
 
 # ##############################################################################

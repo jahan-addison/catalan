@@ -107,7 +107,7 @@ npm run screenshots                           # Playwright, every page at deskto
 
 Posts render with markdown-it and KaTeX, then DOMPurify, and are set in KaTeX's own fonts so prose and math match.
 
-Three build settings, in `frontend/.env.local` or as Docker `--build-arg`s. A `--build-arg` wins when both are set. Start from the template:
+Four build settings, in `frontend/.env.local` or as Docker `--build-arg`s. A `--build-arg` wins when both are set. Start from the template:
 
 ```bash
 cp frontend/.env.example frontend/.env.local
@@ -117,6 +117,7 @@ cp frontend/.env.example frontend/.env.local
 * `VITE_TYPEKIT_ID` - the Adobe Fonts kit for the UI, Neue Haas Grotesk Display and Text, and IBM Plex Mono. Without it, the system fallbacks apply
 * `VITE_CONTACT_EMAIL` - where reports go. It adds "Report a post" to the footer and "Report" to each post, opening an email with the post's id and link filled in, and it's the contact on the terms page. Without it, there are no report links
 * `VITE_TURNSTILE_SITE_KEY` - the public half of the human check, see [Human check](#human-check)
+* `VITE_GA_MEASUREMENT_ID` - a Google Analytics (GA4) measurement id, `G-XXXXXXXXXX`. Production builds get the Google tag, the dev server never does. Without it, there is no analytics
 
 The terms page is `frontend/src/content/terms.md`, with `{{contact}}` replaced by `VITE_CONTACT_EMAIL`.
 

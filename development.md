@@ -117,9 +117,9 @@ cp frontend/.env.example frontend/.env.local
 * `VITE_TYPEKIT_ID` - the Adobe Fonts kit for the UI, Neue Haas Grotesk Display and Text, and IBM Plex Mono. Without it, the system fallbacks apply
 * `VITE_CONTACT_EMAIL` - where reports go. It adds "Report a post" to the footer and "Report" to each post, opening an email with the post's id and link filled in, and it's the contact on the terms page. Without it, there are no report links
 * `VITE_TURNSTILE_SITE_KEY` - the public half of the human check, see [Human check](#human-check)
-* `VITE_GA_MEASUREMENT_ID` - a Google Analytics (GA4) measurement id, `G-XXXXXXXXXX`. Production builds get the Google tag, the dev server never does. Without it, there is no analytics
+* `VITE_GA_MEASUREMENT_ID` - a Google Analytics (GA4) measurement id, `G-XXXXXXXXXX`. Production builds get the Google tag, the dev server never does, and the terms' privacy section describes it. Without it, there is no analytics
 
-The terms page is `frontend/src/content/terms.md`, with `{{contact}}` replaced by `VITE_CONTACT_EMAIL`.
+The terms page is `frontend/src/content/terms.md`, with `{{contact}}` replaced by `VITE_CONTACT_EMAIL`. Text in `{{#analytics}}` shows only in a build with the Google tag, and text in `{{^analytics}}` only without it, see `src/lib/terms.ts`.
 
 ### Human check
 
